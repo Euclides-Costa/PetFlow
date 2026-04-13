@@ -58,8 +58,8 @@ Fluxo:
 ### HX711 → Esp32
 - VCC → 5V  
 - GND → GND  
-- DT → D3  
-- SCK → D2  
+- DT → D4  
+- SCK → D16  
 
 ### Load Cell → HX711
 - Vermelho → E+  
