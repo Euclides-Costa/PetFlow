@@ -33,7 +33,7 @@ O sistema também pode gerar alertas caso o animal não se alimente corretamente
 
 ## 🔌 Componentes
 
-- Arduino (Uno, Nano ou similar)  
+- Esp32 
 - Célula de carga  
 - Módulo HX711  
 - Jumpers  
@@ -55,7 +55,7 @@ Fluxo:
 
 ## 🔧 Montagem
 
-### HX711 → Arduino
+### HX711 → Esp32
 - VCC → 5V  
 - GND → GND  
 - DT → D3  
@@ -72,7 +72,7 @@ Fluxo:
 ## 💻 Como Executar
 
 1. Instale a Arduino IDE  
-2. Conecte o Arduino  
+2. Conecte o Esp32  
 3. Instale a biblioteca **HX711**  
 4. Envie o código  
 5. Abra o Serial Monitor  
@@ -87,7 +87,7 @@ https://youtu.be/Y1W7OLxHuDw?si=WUwXQwVMzvJIynbQ
 
 ## 📊 Próximos Passos
 
-- Integração com app mobile  
+- Integração com app/site  
 - Dashboard com gráficos  
 - Notificações em tempo real  
 - Alimentação automática  
