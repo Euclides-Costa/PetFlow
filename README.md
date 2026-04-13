@@ -1,6 +1,6 @@
 # 🐾 PetFlow
 
-Sistema inteligente de monitoramento alimentar para pets utilizando Arduino e sensor de peso.
+Sistema inteligente de monitoramento alimentar para pets utilizando ESP32 e sensor de peso.
 
 ---
 
