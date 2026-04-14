@@ -56,7 +56,7 @@ Fluxo:
 ## 🔧 Montagem
 
 ### HX711 → Esp32
-- VCC → 5V  
+- VCC → 3.3V  
 - GND → GND  
 - DT → D4  
 - SCK → D16  
