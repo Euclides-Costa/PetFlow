@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>PetFlow - Dashboard Inteligente</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Inter', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #0a2b1e 0%, #0d3d28 50%, #0a2b1e 100%);
+            min-height: 100vh;
+            color: #e0e7e0;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a4d3a, #0f3628);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            border-bottom: 2px solid #2ecc71;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            font-size: 2.2rem;
+            background: #2ecc71;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(46,204,113,0.5);
+        }
+
+        .logo h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff, #a8e6cf);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .logo p {
+            font-size: 0.75rem;
+            color: #a0c4b0;
+        }
+
+        .status-card {
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(10px);
+            padding: 8px 18px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.85rem;
+        }
+
+        .status-led {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #2ecc71;
+            box-shadow: 0 0 8px #2ecc71;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1);}
+            50% { opacity: 0.5; transform: scale(1.2);}
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Filtros */
+        .filters-section {
+            background: linear-gradient(145deg, #0f3528, #0b2c20);
+            border-radius: 28px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(46,204,113,0.3);
+        }
+
+        .filters-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 1.2rem;
+            font-size: 1.1rem;
+            color: #2ecc71;
+        }
+
+        .filters-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: flex-end;
+        }
+
+        .filter-group {
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .filter-group label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #7f8c8d;
+            margin-bottom: 6px;
+        }
+
+        .filter-group input, .filter-group select {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(46,204,113,0.3);
+            border-radius: 12px;
+            color: #e0e7e0;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-group input:focus, .filter-group select:focus {
+            outline: none;
+            border-color: #2ecc71;
+            box-shadow: 0 0 10px rgba(46,204,113,0.2);
+        }
+
+        .btn-filter {
+            background: #2ecc71;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 12px;
+            color: #0a2b1e;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-filter:hover {
+            background: #27ae60;
+            transform: translateY(-2px);
+        }
+
+        .btn-reset {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+        }
+
+        .btn-reset:hover {
+            background: #e74c3c;
+            color: white;
+        }
+
+        /* Cards de KPI */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: linear-gradient(145deg, #0f3528, #0b2c20);
+            border-radius: 24px;
+            padding: 1.5rem;
+            border: 1px solid rgba(46,204,113,0.2);
+            transition: transform 0.2s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(46,204,113,0.5);
+        }
+
+        .kpi-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+
+        .kpi-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #2ecc71;
+        }
+
+        .kpi-unit {
+            font-size: 1rem;
+            color: #7f8c8d;
+        }
+
+        .kpi-trend {
+            font-size: 0.75rem;
+            margin-top: 8px;
+            color: #f39c12;
+        }
+
+        /* Gráficos */
+        .chart-section {
+            background: rgba(15,53,40,0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 28px;
+            padding: 1.8rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(46,204,113,0.2);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-type-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chart-type-btn {
+            background: rgba(46,204,113,0.15);
+            border: none;
+            padding: 6px 16px;
+            border-radius: 20px;
+            color: #a0c4b0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .chart-type-btn.active {
+            background: #2ecc71;
+            color: #0a2b1e;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+        }
+
+        canvas {
+            max-height: 380px;
+            width: 100%;
+        }
+
+        /* Tabela de histórico */
+        .history-section {
+            background: rgba(15,53,40,0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 28px;
+            padding: 1.8rem;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-export {
+            background: rgba(52,152,219,0.2);
+            border: 1px solid #3498db;
+            color: #3498db;
+            padding: 8px 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-export:hover {
+            background: #3498db;
+            color: white;
+        }
+
+        .history-table-container {
+            overflow-x: auto;
+            border-radius: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid rgba(46,204,113,0.2);
+        }
+
+        th {
+            color: #2ecc71;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            background: #0d3d28;
+        }
+
+        tr:hover {
+            background: rgba(46,204,113,0.1);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            font-size: 0.75rem;
+            color: #7f8c8d;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .kpi-value { font-size: 1.8rem; }
+            .chart-container { height: 250px; }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+    <div class="logo">
+        <div class="logo-icon">🐾</div>
+        <div>
+            <h1>PetFlow</h1>
+            <p>Monitoramento inteligente de alimentação</p>
+        </div>
+    </div>
+    <div class="status-card">
+        <div class="status-led"></div>
+        <span>🟢 Sistema ativo</span>
+        <span>📡 Dados em tempo real</span>
+    </div>
+</div>
+
+<div class="container">
+    <!-- Filtros de Data -->
+    <div class="filters-section">
+        <div class="filters-title">
+            <span>📅</span> Filtros Personalizados
+        </div>
+        <div class="filters-row">
+            <div class="filter-group">
+                <label>Data Inicial</label>
+                <input type="date" id="dataInicio" value="">
+            </div>
+            <div class="filter-group">
+                <label>Data Final</label>
+                <input type="date" id="dataFim" value="">
+            </div>
+            <div class="filter-group">
+                <label>Período Rápido</label>
+                <select id="periodoRapido">
+                    <option value="hoje">Hoje</option>
+                    <option value="ontem">Ontem</option>
+                    <option value="ultimos7">Últimos 7 dias</option>
+                    <option value="ultimos15">Últimos 15 dias</option>
+                    <option value="ultimos30" selected>Últimos 30 dias</option>
+                    <option value="esseMes">Este mês</option>
+                    <option value="mesPassado">Mês passado</option>
+                    <option value="todos">Todo histórico</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Tipo de Gráfico</label>
+                <select id="tipoGrafico">
+                    <option value="bar">Barras</option>
+                    <option value="line">Linha</option>
+                    <option value="area">Área</option>
+                </select>
+            </div>
+            <button class="btn-filter" id="aplicarFiltros">
+                🔍 Aplicar Filtros
+            </button>
+            <button class="btn-filter btn-reset" id="resetFiltros">
+                ↺ Resetar
+            </button>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title">🍖 Consumo Total</div>
+            <div class="kpi-value" id="totalConsumo">0<span class="kpi-unit"> kg</span></div>
+            <div class="kpi-trend" id="trendConsumo">No período selecionado</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">📊 Média Diária</div>
+            <div class="kpi-value" id="mediaDiaria">0<span class="kpi-unit"> kg/dia</span></div>
+            <div class="kpi-trend" id="trendMedia">Média do período</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">📈 Maior Consumo</div>
+            <div class="kpi-value" id="maxConsumo">0<span class="kpi-unit"> kg</span></div>
+            <div class="kpi-trend" id="dataMaxConsumo">-</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">📉 Menor Consumo</div>
+            <div class="kpi-value" id="minConsumo">0<span class="kpi-unit"> kg</span></div>
+            <div class="kpi-trend" id="dataMinConsumo">-</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">📅 Dias no Período</div>
+            <div class="kpi-value" id="totalDias">0<span class="kpi-unit"> dias</span></div>
+            <div class="kpi-trend" id="leiturasCount">0 leituras</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">⚖️ Peso Atual</div>
+            <div class="kpi-value" id="pesoAtual">0<span class="kpi-unit"> kg</span></div>
+            <div class="kpi-trend" id="ultimaAtualizacao">Aguardando dados</div>
+        </div>
+    </div>
+
+    <!-- Gráfico Principal -->
+    <div class="chart-section">
+        <div class="chart-header">
+            <h3>📊 Consumo Diário</h3>
+            <div class="chart-type-buttons">
+                <button class="chart-type-btn" data-type="bar">📊 Barras</button>
+                <button class="chart-type-btn" data-type="line">📈 Linha</button>
+                <button class="chart-type-btn" data-type="area">🎨 Área</button>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="consumoChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Tabela de Histórico com Exportação -->
+    <div class="history-section">
+        <div class="history-header">
+            <h3>📋 Histórico de Medições</h3>
+            <div class="export-buttons">
+                <button class="btn-export" id="exportCSV">📄 Exportar CSV</button>
+                <button class="btn-export" id="exportJSON">📋 Exportar JSON</button>
+                <button class="btn-refresh" id="refreshHistory">🔄 Atualizar</button>
+            </div>
+        </div>
+        <div class="history-table-container">
+            <table id="historyTable">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Peso (kg)</th>
+                    <th>Data/Hora</th>
+                </tr>
+                </thead>
+                <tbody id="historyBody">
+                <tr><td colspan="3" style="text-align:center;">Carregando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<footer>
+    PetFlow • Monitoramento Inteligente • Dados em tempo real
+</footer>
+
+<script>
+    // ============================================================
+    // CONFIGURAÇÃO
+    // ============================================================
+    const API_URL = "http://192.168.0.3:3000";
+    let consumoChart = null;
+    let dadosFiltrados = [];
+    let dadosCompletos = [];
+
+    // ============================================================
+    // INICIALIZAÇÃO
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', () => {
+        iniciarDatasPadrao();
+        carregarTodosDados();
+        iniciarPollingPeso();
+        setupEventListeners();
+        initChart();
+    });
+
+    function iniciarDatasPadrao() {
+        const hoje = new Date();
+        const trintaDiasAtras = new Date();
+        trintaDiasAtras.setDate(hoje.getDate() - 30);
+
+        document.getElementById('dataFim').valueAsDate = hoje;
+        document.getElementById('dataInicio').valueAsDate = trintaDiasAtras;
+    }
+
+    function setupEventListeners() {
+        document.getElementById('aplicarFiltros').addEventListener('click', aplicarFiltros);
+        document.getElementById('resetFiltros').addEventListener('click', resetFiltros);
+        document.getElementById('periodoRapido').addEventListener('change', aplicarPeriodoRapido);
+        document.getElementById('tipoGrafico').addEventListener('change', atualizarTipoGrafico);
+        document.getElementById('refreshHistory').addEventListener('click', carregarTodosDados);
+        document.getElementById('exportCSV').addEventListener('click', exportarCSV);
+        document.getElementById('exportJSON').addEventListener('click', exportarJSON);
+
+        document.querySelectorAll('.chart-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tipo = btn.getAttribute('data-type');
+                document.getElementById('tipoGrafico').value = tipo;
+                atualizarTipoGrafico();
+
+                document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
+    // ============================================================
+    // CARREGAR DADOS
+    // ============================================================
+    async function carregarTodosDados() {
+        try {
+            const response = await fetch(`${API_URL}/pesos`);
+            dadosCompletos = await response.json();
+            dadosCompletos = dadosCompletos.filter(item => item.valor >= 0);
+            aplicarFiltros();
+        } catch (error) {
+            console.error("Erro ao carregar:", error);
+        }
+    }
+
+    function aplicarFiltros() {
+        let dataInicio = new Date(document.getElementById('dataInicio').value);
+        let dataFim = new Date(document.getElementById('dataFim').value);
+        dataFim.setHours(23, 59, 59);
+
+        dadosFiltrados = dadosCompletos.filter(item => {
+            const dataItem = new Date(item.data);
+            return dataItem >= dataInicio && dataItem <= dataFim && item.valor >= 0;
+        });
+
+        atualizarKPIs();
+        atualizarGrafico();
+        atualizarTabela();
+    }
+
+    function resetFiltros() {
+        const hoje = new Date();
+        const trintaDiasAtras = new Date();
+        trintaDiasAtras.setDate(hoje.getDate() - 30);
+
+        document.getElementById('dataInicio').valueAsDate = trintaDiasAtras;
+        document.getElementById('dataFim').valueAsDate = hoje;
+        document.getElementById('periodoRapido').value = 'ultimos30';
+
+        aplicarFiltros();
+    }
+
+    function aplicarPeriodoRapido() {
+        const periodo = document.getElementById('periodoRapido').value;
+        const hoje = new Date();
+        let inicio = new Date();
+
+        switch(periodo) {
+            case 'hoje':
+                inicio = new Date(hoje.setHours(0,0,0,0));
+                break;
+            case 'ontem':
+                inicio = new Date(hoje);
+                inicio.setDate(hoje.getDate() - 1);
+                break;
+            case 'ultimos7':
+                inicio.setDate(hoje.getDate() - 7);
+                break;
+            case 'ultimos15':
+                inicio.setDate(hoje.getDate() - 15);
+                break;
+            case 'ultimos30':
+                inicio.setDate(hoje.getDate() - 30);
+                break;
+            case 'esseMes':
+                inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+                break;
+            case 'mesPassado':
+                inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+                const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+                document.getElementById('dataFim').valueAsDate = fim;
+                break;
+            case 'todos':
+                document.getElementById('dataInicio').value = '';
+                document.getElementById('dataFim').value = '';
+                aplicarFiltros();
+                return;
+        }
+
+        if (periodo !== 'todos') {
+            document.getElementById('dataInicio').valueAsDate = inicio;
+            document.getElementById('dataFim').valueAsDate = new Date();
+        }
+
+        aplicarFiltros();
+    }
+
+    // ============================================================
+    // ATUALIZAR KPIs
+    // ============================================================
+    function atualizarKPIs() {
+        if (dadosFiltrados.length === 0) {
+            document.getElementById('totalConsumo').innerHTML = '0<span class="kpi-unit"> kg</span>';
+            document.getElementById('mediaDiaria').innerHTML = '0<span class="kpi-unit"> kg/dia</span>';
+            document.getElementById('maxConsumo').innerHTML = '0<span class="kpi-unit"> kg</span>';
+            document.getElementById('minConsumo').innerHTML = '0<span class="kpi-unit"> kg</span>';
+            return;
+        }
+
+        // Total consumo (soma das variações)
+        let total = 0;
+        let valores = dadosFiltrados.map(d => d.valor);
+        for (let i = 1; i < valores.length; i++) {
+            const diferenca = valores[i-1] - valores[i];
+            if (diferenca > 0) total += diferenca;
+        }
+
+        const maximo = Math.max(...valores);
+        const minimo = Math.min(...valores.filter(v => v > 0));
+
+        // Encontrar datas dos extremos
+        const maxItem = dadosFiltrados.find(d => d.valor === maximo);
+        const minItem = dadosFiltrados.find(d => d.valor === minimo);
+
+        // Calcular dias no período
+        const dataInicio = new Date(document.getElementById('dataInicio').value);
+        const dataFim = new Date(document.getElementById('dataFim').value);
+        const diasPeriodo = Math.max(1, Math.ceil((dataFim - dataInicio) / (1000 * 60 * 60 * 24)));
+
+        document.getElementById('totalConsumo').innerHTML = total.toFixed(2) + '<span class="kpi-unit"> kg</span>';
+        document.getElementById('mediaDiaria').innerHTML = (total / diasPeriodo).toFixed(2) + '<span class="kpi-unit"> kg/dia</span>';
+        document.getElementById('maxConsumo').innerHTML = maximo.toFixed(3) + '<span class="kpi-unit"> kg</span>';
+        document.getElementById('minConsumo').innerHTML = minimo.toFixed(3) + '<span class="kpi-unit"> kg</span>';
+        document.getElementById('dataMaxConsumo').innerHTML = maxItem ? new Date(maxItem.data).toLocaleDateString() : '-';
+        document.getElementById('dataMinConsumo').innerHTML = minItem ? new Date(minItem.data).toLocaleDateString() : '-';
+        document.getElementById('totalDias').innerHTML = diasPeriodo + '<span class="kpi-unit"> dias</span>';
+        document.getElementById('leiturasCount').innerHTML = dadosFiltrados.length + ' leituras';
+    }
+
+    // ============================================================
+    // GRÁFICO
+    // ============================================================
+    function initChart() {
+        const ctx = document.getElementById('consumoChart').getContext('2d');
+        consumoChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: [], datasets: [{ label: 'Peso (kg)', data: [], backgroundColor: '#2ecc71', borderColor: '#2ecc71', borderWidth: 2, fill: false }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { labels: { color: '#a0c4b0' } }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toFixed(3)} kg` } } },
+                scales: { y: { beginAtZero: true, grid: { color: 'rgba(46,204,113,0.1)' }, ticks: { color: '#a0c4b0', callback: (v) => v + ' kg' } }, x: { ticks: { color: '#a0c4b0', maxRotation: 45, autoSkip: true } } }
+            }
+        });
+    }
+
+    function atualizarGrafico() {
+        if (!consumoChart) return;
+
+        const tipo = document.getElementById('tipoGrafico').value;
+        let tipoFinal = tipo === 'area' ? 'line' : tipo;
+
+        consumoChart.config.type = tipoFinal;
+
+        // Agrupar por dia
+        const consumoDiario = {};
+        dadosFiltrados.forEach(item => {
+            const data = new Date(item.data).toLocaleDateString('pt-BR');
+            if (!consumoDiario[data]) consumoDiario[data] = [];
+            consumoDiario[data].push(item.valor);
+        });
+
+        const labels = Object.keys(consumoDiario).sort((a,b) => {
+            const [da,ma,aa] = a.split('/');
+            const [db,mb,ab] = b.split('/');
+            return new Date(aa, ma-1, da) - new Date(ab, mb-1, db);
+        });
+
+        const valores = labels.map(label => {
+            const pesos = consumoDiario[label];
+            return pesos.length ? pesos[pesos.length - 1] : 0;
+        });
+
+        consumoChart.data.labels = labels.slice(-30);
+        consumoChart.data.datasets[0].data = valores.slice(-30);
+
+        if (tipo === 'area') {
+            consumoChart.data.datasets[0].fill = true;
+            consumoChart.data.datasets[0].backgroundColor = 'rgba(46,204,113,0.2)';
+        } else if (tipo === 'bar') {
+            consumoChart.data.datasets[0].fill = false;
+            consumoChart.data.datasets[0].backgroundColor = '#2ecc71';
+        } else {
+            consumoChart.data.datasets[0].fill = false;
+            consumoChart.data.datasets[0].backgroundColor = 'transparent';
+        }
+
+        consumoChart.update();
+    }
+
+    function atualizarTipoGrafico() {
+        if (!consumoChart) return;
+        const tipo = document.getElementById('tipoGrafico').value;
+        let tipoFinal = tipo === 'area' ? 'line' : tipo;
+        consumoChart.config.type = tipoFinal;
+
+        if (tipo === 'area') {
+            consumoChart.data.datasets[0].fill = true;
+            consumoChart.data.datasets[0].backgroundColor = 'rgba(46,204,113,0.2)';
+        } else if (tipo === 'bar') {
+            consumoChart.data.datasets[0].fill = false;
+            consumoChart.data.datasets[0].backgroundColor = '#2ecc71';
+        } else {
+            consumoChart.data.datasets[0].fill = false;
+            consumoChart.data.datasets[0].backgroundColor = 'transparent';
+        }
+        consumoChart.update();
+    }
+
+    // ============================================================
+    // TABELA DE HISTÓRICO
+    // ============================================================
+    function atualizarTabela() {
+        const tbody = document.getElementById('historyBody');
+        if (dadosFiltrados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Nenhum registro encontrado</td></tr>';
+            return;
+        }
+
+        const reversed = [...dadosFiltrados].reverse();
+        tbody.innerHTML = reversed.slice(0, 100).map(row => `
+            <tr>
+                <td>${row.id}</td>
+                <td><strong>${parseFloat(row.valor).toFixed(3)} kg</strong></td>
+                <td>${new Date(row.data).toLocaleString('pt-BR')}</td>
+            </tr>
+        `).join('');
+    }
+
+    // ============================================================
+    // EXPORTAÇÃO
+    // ============================================================
+    function exportarCSV() {
+        let csv = "id,peso_kg,data_hora\n";
+        dadosFiltrados.forEach(row => {
+            csv += `${row.id},${row.valor},${row.data}\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `petflow_dados_${new Date().toISOString().slice(0,19)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function exportarJSON() {
+        const json = JSON.stringify(dadosFiltrados, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `petflow_dados_${new Date().toISOString().slice(0,19)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // ============================================================
+    // PESO EM TEMPO REAL
+    // ============================================================
+    async function iniciarPollingPeso() {
+        setInterval(async () => {
+            try {
+                const response = await fetch(`${API_URL}/pesos`);
+                const dados = await response.json();
+                if (dados && dados.length > 0) {
+                    const ultimo = dados[dados.length - 1];
+                    document.getElementById('pesoAtual').innerHTML = parseFloat(ultimo.valor).toFixed(3) + '<span class="kpi-unit"> kg</span>';
+                    document.getElementById('ultimaAtualizacao').innerHTML = new Date(ultimo.data).toLocaleTimeString();
+                }
+            } catch (error) {
+                console.warn("Erro ao buscar peso:", error);
+            }
+        }, 5000);
+    }
+</script>
+</body>
+</html>
