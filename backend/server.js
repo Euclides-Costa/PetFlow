@@ -1,41 +1,96 @@
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
+
+// ============================================================
+// FUNÇÕES PARA DATA/HORA LOCAL DO BRASIL (UTC-3)
+// ============================================================
+
+// Função para obter data/hora local do Brasil
+function getDataHoraBrasil() {
+    const agora = new Date();
+    // Converter para UTC-3 (Brasília)
+    const offsetBrasil = -3;
+    const utc = agora.getTime() + (agora.getTimezoneOffset() * 60000);
+    return new Date(utc + (offsetBrasil * 3600000));
+}
+
+// Formatar para exibição (DD/MM/AAAA HH:MM:SS)
+function formatarDataHoraExibicao(data) {
+    const dia = data.getDate().toString().padStart(2, '0');
+    const mes = (data.getMonth() + 1).toString().padStart(2, '0');
+    const ano = data.getFullYear();
+    const hora = data.getHours().toString().padStart(2, '0');
+    const minuto = data.getMinutes().toString().padStart(2, '0');
+    const segundo = data.getSeconds().toString().padStart(2, '0');
+    return `${dia}/${mes}/${ano} ${hora}:${minuto}:${segundo}`;
+}
+
+// Formatar para SQLite (YYYY-MM-DD HH:MM:SS)
+function formatarDataHoraSQL(data) {
+    const ano = data.getFullYear();
+    const mes = (data.getMonth() + 1).toString().padStart(2, '0');
+    const dia = data.getDate().toString().padStart(2, '0');
+    const hora = data.getHours().toString().padStart(2, '0');
+    const minuto = data.getMinutes().toString().padStart(2, '0');
+    const segundo = data.getSeconds().toString().padStart(2, '0');
+    return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}`;
+}
+
+// ============================================================
+// CONFIGURAÇÃO CORS
+// ============================================================
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
-app.use(cors());
 
 // ============================================================
-// BANCO DE DADOS
+// SERVIDOR ESTÁTICO PARA O FRONTEND
 // ============================================================
-const db = new sqlite3.Database("pesos.db");
+app.use(express.static(path.join(__dirname, 'frontend')));
 
-// Criar tabela principal
+// Rota principal - Dashboard
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
+});
+
+// ============================================================
+// BANCO DE DADOS (com campo data como TEXT)
+// ============================================================
+const db = new sqlite3.Database(path.join(__dirname, "pesos.db"));
+
+// Criar tabela principal (data como TEXT para armazenar formato brasileiro)
 db.run(`
     CREATE TABLE IF NOT EXISTS pesos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        valor REAL,
-        data DATETIME DEFAULT CURRENT_TIMESTAMP
+                                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                         valor REAL,
+                                         data TEXT
     )
 `);
 
-// Criar tabela de configurações (com verificação)
+// Criar tabela de configurações
 db.run(`
     CREATE TABLE IF NOT EXISTS config (
-        chave TEXT PRIMARY KEY,
-        valor TEXT,
-        data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP
+                                          chave TEXT PRIMARY KEY,
+                                          valor TEXT,
+                                          data_atualizacao TEXT
     )
 `, (err) => {
     if (err) {
         console.log("⚠️ Tabela config já existe ou erro:", err.message);
     } else {
         console.log("✅ Tabela config criada com sucesso");
-        // Inserir configurações padrão
-        db.run(`INSERT OR IGNORE INTO config (chave, valor) VALUES ('alerta_horas', '8')`);
-        db.run(`INSERT OR IGNORE INTO config (chave, valor) VALUES ('limite_maximo_kg', '5')`);
-        db.run(`INSERT OR IGNORE INTO config (chave, valor) VALUES ('filtro_leituras', '5')`);
+        const agora = formatarDataHoraSQL(getDataHoraBrasil());
+        db.run(`INSERT OR IGNORE INTO config (chave, valor, data_atualizacao) VALUES ('alerta_horas', '8', ?)`, [agora]);
+        db.run(`INSERT OR IGNORE INTO config (chave, valor, data_atualizacao) VALUES ('limite_maximo_kg', '5', ?)`, [agora]);
+        db.run(`INSERT OR IGNORE INTO config (chave, valor, data_atualizacao) VALUES ('filtro_leituras', '5', ?)`, [agora]);
     }
 });
 
@@ -50,50 +105,56 @@ db.run("DELETE FROM pesos WHERE valor < 0", [], (err) => {
 // ENDPOINTS PRINCIPAIS
 // ============================================================
 
-// 📡 Receber dados do ESP32 (com validação)
+// 📡 Receber dados do ESP32 (com data gerada pelo JavaScript)
 app.post("/peso", (req, res) => {
     let { peso } = req.body;
 
-    // Validar peso
     if (peso === undefined || peso === null) {
         return res.status(400).json({ error: "Peso não informado" });
     }
 
     peso = parseFloat(peso);
 
-    // Ignorar valores negativos
     if (peso < 0) {
         console.log(`⚠️ Valor negativo ignorado: ${peso} kg`);
         return res.json({ status: "ignored", reason: "negative value", peso: peso });
     }
 
-    // Limitar a 10kg máximo (evitar picos)
     if (peso > 10) {
         console.log(`⚠️ Valor muito alto ignorado: ${peso} kg`);
         return res.json({ status: "ignored", reason: "value too high", peso: peso });
     }
 
-    console.log(`📊 Peso salvo: ${peso.toFixed(3)} kg - ${new Date().toLocaleTimeString()}`);
+    // Usar JavaScript para obter o horário local correto do Brasil
+    const dataHoraBrasil = getDataHoraBrasil();
+    const dataFormatada = formatarDataHoraSQL(dataHoraBrasil);
+    const dataExibicao = formatarDataHoraExibicao(dataHoraBrasil);
 
-    db.run("INSERT INTO pesos (valor) VALUES (?)", [peso], function(err) {
-        if (err) {
-            console.error("Erro ao salvar:", err);
-            return res.status(500).json({ error: err.message });
+    console.log(`📊 Peso salvo: ${peso.toFixed(3)} kg - ${dataExibicao}`);
+
+    db.run(
+        "INSERT INTO pesos (valor, data) VALUES (?, ?)",
+        [peso, dataFormatada],
+        function(err) {
+            if (err) {
+                console.error("Erro ao salvar:", err);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({
+                status: "ok",
+                id: this.lastID,
+                peso: peso,
+                timestamp: dataExibicao
+            });
         }
-        res.json({
-            status: "ok",
-            id: this.lastID,
-            peso: peso,
-            timestamp: new Date().toISOString()
-        });
-    });
+    );
 });
 
-// 📊 Histórico completo (apenas valores válidos)
+// 📊 Histórico completo
 app.get("/pesos", (req, res) => {
     const { limite = 500 } = req.query;
     db.all(
-        "SELECT * FROM pesos WHERE valor >= 0 ORDER BY data DESC LIMIT ?",
+        "SELECT * FROM pesos WHERE valor >= 0 ORDER BY id DESC LIMIT ?",
         [limite],
         (err, rows) => {
             if (err) {
@@ -105,22 +166,22 @@ app.get("/pesos", (req, res) => {
     );
 });
 
-// 📅 Histórico com filtro de data (para o dashboard)
+// 📅 Histórico com filtro de data
 app.get("/pesos/filtro", (req, res) => {
     let { inicio, fim, limite = 1000 } = req.query;
     let query = "SELECT * FROM pesos WHERE valor >= 0";
     let params = [];
 
     if (inicio) {
-        query += " AND data >= ?";
+        query += " AND date(data) >= date(?)";
         params.push(inicio);
     }
     if (fim) {
-        query += " AND data <= ?";
-        params.push(fim + " 23:59:59");
+        query += " AND date(data) <= date(?)";
+        params.push(fim);
     }
 
-    query += " ORDER BY data DESC LIMIT ?";
+    query += " ORDER BY id DESC LIMIT ?";
     params.push(limite);
 
     db.all(query, params, (err, rows) => {
@@ -139,40 +200,40 @@ app.get("/consumo/periodo", (req, res) => {
 
     switch(grupo) {
         case "hora":
-            groupBy = "strftime('%Y-%m-%d %H:00:00', data)";
+            groupBy = "substr(data, 1, 13)";
             break;
         case "dia":
-            groupBy = "DATE(data)";
+            groupBy = "substr(data, 1, 10)";
             break;
         case "semana":
             groupBy = "strftime('%Y-%W', data)";
             break;
         case "mes":
-            groupBy = "strftime('%Y-%m', data)";
+            groupBy = "substr(data, 1, 7)";
             break;
         default:
-            groupBy = "DATE(data)";
+            groupBy = "substr(data, 1, 10)";
     }
 
     let query = `
-        SELECT 
+        SELECT
             ${groupBy} as periodo,
             MIN(valor) as peso_minimo,
             MAX(valor) as peso_maximo,
             AVG(valor) as peso_medio,
             COUNT(*) as leituras
-        FROM pesos 
+        FROM pesos
         WHERE valor >= 0
     `;
     let params = [];
 
     if (inicio) {
-        query += " AND data >= ?";
+        query += " AND date(data) >= date(?)";
         params.push(inicio);
     }
     if (fim) {
-        query += " AND data <= ?";
-        params.push(fim + " 23:59:59");
+        query += " AND date(data) <= date(?)";
+        params.push(fim);
     }
 
     query += " GROUP BY periodo ORDER BY periodo";
@@ -186,22 +247,22 @@ app.get("/consumo/periodo", (req, res) => {
     });
 });
 
-// 🍖 Consumo total (soma das variações de peso)
+// 🍖 Consumo total
 app.get("/consumo/total", (req, res) => {
     let { inicio, fim } = req.query;
-    let query = "SELECT valor, data FROM pesos WHERE valor >= 0 ORDER BY data ASC";
+    let query = "SELECT valor, data FROM pesos WHERE valor >= 0 ORDER BY id ASC";
     let params = [];
 
     if (inicio) {
-        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND data >= ? ORDER BY data ASC";
+        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND date(data) >= date(?) ORDER BY id ASC";
         params.push(inicio);
     }
     if (fim && params.length > 0) {
-        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND data >= ? AND data <= ? ORDER BY data ASC";
-        params.push(fim + " 23:59:59");
+        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND date(data) >= date(?) AND date(data) <= date(?) ORDER BY id ASC";
+        params.push(fim);
     } else if (fim) {
-        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND data <= ? ORDER BY data ASC";
-        params.push(fim + " 23:59:59");
+        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND date(data) <= date(?) ORDER BY id ASC";
+        params.push(fim);
     }
 
     db.all(query, params, (err, rows) => {
@@ -210,7 +271,6 @@ app.get("/consumo/total", (req, res) => {
             return;
         }
 
-        // Calcular consumo total (soma das reduções de peso)
         let consumoTotal = 0;
         for (let i = 1; i < rows.length; i++) {
             const diferenca = rows[i-1].valor - rows[i].valor;
@@ -230,17 +290,19 @@ app.get("/consumo/total", (req, res) => {
 
 // 📅 Consumo do dia
 app.get("/consumo/dia", (req, res) => {
+    const hoje = formatarDataHoraSQL(getDataHoraBrasil()).split(' ')[0];
+
     db.all(`
-        SELECT 
-            DATE(data) as dia,
-            SUM(CASE WHEN valor > 0 THEN valor ELSE 0 END) as total,
+        SELECT
+            substr(data, 1, 10) as dia,
+            SUM(valor) as total,
             COUNT(*) as leituras,
             MIN(valor) as minimo,
             MAX(valor) as maximo
         FROM pesos
-        WHERE DATE(data) = DATE('now') AND valor >= 0
-        GROUP BY DATE(data)
-    `, [], (err, rows) => {
+        WHERE substr(data, 1, 10) = ? AND valor >= 0
+        GROUP BY substr(data, 1, 10)
+    `, [hoje], (err, rows) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -251,8 +313,13 @@ app.get("/consumo/dia", (req, res) => {
 
 // 📆 Consumo da semana
 app.get("/consumo/semana", (req, res) => {
+    const hoje = getDataHoraBrasil();
+    const dataLimite = new Date(hoje);
+    dataLimite.setDate(hoje.getDate() - 7);
+    const dataLimiteStr = formatarDataHoraSQL(dataLimite).split(' ')[0];
+
     db.all(`
-        SELECT 
+        SELECT
             strftime('%w', data) as dia_semana,
             CASE strftime('%w', data)
                 WHEN '0' THEN 'Domingo'
@@ -262,15 +329,15 @@ app.get("/consumo/semana", (req, res) => {
                 WHEN '4' THEN 'Quinta'
                 WHEN '5' THEN 'Sexta'
                 WHEN '6' THEN 'Sábado'
-            END as nome_dia,
+                END as nome_dia,
             SUM(valor) as total,
             AVG(valor) as media,
             COUNT(*) as leituras
         FROM pesos
-        WHERE DATE(data) >= DATE('now', '-7 days') AND valor >= 0
+        WHERE substr(data, 1, 10) >= ? AND valor >= 0
         GROUP BY dia_semana
         ORDER BY dia_semana
-    `, [], (err, rows) => {
+    `, [dataLimiteStr], (err, rows) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -279,22 +346,27 @@ app.get("/consumo/semana", (req, res) => {
     });
 });
 
-// 📅 Consumo do mês (últimos 30 dias)
+// 📅 Consumo do mês
 app.get("/consumo/mes", (req, res) => {
+    const hoje = getDataHoraBrasil();
+    const dataLimite = new Date(hoje);
+    dataLimite.setDate(hoje.getDate() - 30);
+    const dataLimiteStr = formatarDataHoraSQL(dataLimite).split(' ')[0];
+
     db.all(`
-        SELECT 
+        SELECT
             strftime('%W', data) as semana,
-            'Semana ' || (strftime('%W', data) - strftime('%W', DATE('now', '-30 days')) + 1) as nome_semana,
+            'Semana ' || (strftime('%W', data) - strftime('%W', ?) + 1) as nome_semana,
             SUM(valor) as total,
             AVG(valor) as media,
             COUNT(*) as leituras,
             MIN(valor) as minimo,
             MAX(valor) as maximo
         FROM pesos
-        WHERE DATE(data) >= DATE('now', '-30 days') AND valor >= 0
+        WHERE substr(data, 1, 10) >= ? AND valor >= 0
         GROUP BY semana
         ORDER BY semana
-    `, [], (err, rows) => {
+    `, [dataLimiteStr, dataLimiteStr], (err, rows) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -303,19 +375,25 @@ app.get("/consumo/mes", (req, res) => {
     });
 });
 
-// 📊 Dashboard resumo completo
+// 📊 Dashboard resumo
 app.get("/dashboard", (req, res) => {
+    const hoje = formatarDataHoraSQL(getDataHoraBrasil()).split(' ')[0];
+    const dataLimite7 = new Date(getDataHoraBrasil());
+    dataLimite7.setDate(dataLimite7.getDate() - 7);
+    const dataLimite30 = new Date(getDataHoraBrasil());
+    dataLimite30.setDate(dataLimite30.getDate() - 30);
+    const dataLimite7Str = formatarDataHoraSQL(dataLimite7).split(' ')[0];
+    const dataLimite30Str = formatarDataHoraSQL(dataLimite30).split(' ')[0];
+
     db.get(`
-        SELECT 
-            COALESCE((SELECT SUM(valor) FROM pesos WHERE DATE(data) = DATE('now') AND valor >= 0), 0) as consumo_hoje,
-            COALESCE((SELECT SUM(valor) FROM pesos WHERE DATE(data) >= DATE('now', '-7 days') AND valor >= 0), 0) as consumo_semana,
-            COALESCE((SELECT SUM(valor) FROM pesos WHERE DATE(data) >= DATE('now', '-30 days') AND valor >= 0), 0) as consumo_mes,
+        SELECT
+            COALESCE((SELECT SUM(valor) FROM pesos WHERE substr(data, 1, 10) = ? AND valor >= 0), 0) as consumo_hoje,
+            COALESCE((SELECT SUM(valor) FROM pesos WHERE substr(data, 1, 10) >= ? AND valor >= 0), 0) as consumo_semana,
+            COALESCE((SELECT SUM(valor) FROM pesos WHERE substr(data, 1, 10) >= ? AND valor >= 0), 0) as consumo_mes,
             COALESCE((SELECT COUNT(*) FROM pesos WHERE valor >= 0), 0) as total_leituras,
-            COALESCE((SELECT valor FROM pesos WHERE valor >= 0 ORDER BY data DESC LIMIT 1), 0) as ultimo_peso,
-            (SELECT data FROM pesos WHERE valor >= 0 ORDER BY data DESC LIMIT 1) as ultima_atualizacao,
-            COALESCE((SELECT AVG(valor) FROM pesos WHERE DATE(data) >= DATE('now', '-7 days') AND valor >= 0), 0) as media_7dias,
-            COALESCE((SELECT COUNT(*) FROM pesos WHERE DATE(data) = DATE('now') AND valor >= 0), 0) as leituras_hoje
-    `, [], (err, row) => {
+            COALESCE((SELECT valor FROM pesos WHERE valor >= 0 ORDER BY id DESC LIMIT 1), 0) as ultimo_peso,
+            (SELECT data FROM pesos WHERE valor >= 0 ORDER BY id DESC LIMIT 1) as ultima_atualizacao
+    `, [hoje, dataLimite7Str, dataLimite30Str], (err, row) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -324,18 +402,16 @@ app.get("/dashboard", (req, res) => {
     });
 });
 
-// 📈 Estatísticas avançadas
+// 📈 Estatísticas
 app.get("/estatisticas", (req, res) => {
     db.get(`
-        SELECT 
+        SELECT
             COALESCE(MIN(valor), 0) as peso_minimo,
             COALESCE(MAX(valor), 0) as peso_maximo,
             COALESCE(AVG(valor), 0) as peso_medio,
             COUNT(*) as total_leituras,
             SUM(CASE WHEN valor < 0.1 THEN 1 ELSE 0 END) as leituras_vazio,
-            SUM(CASE WHEN valor > 1 THEN 1 ELSE 0 END) as leituras_acima_1kg,
-            (SELECT valor FROM pesos ORDER BY data DESC LIMIT 1) as ultimo_peso,
-            (SELECT data FROM pesos ORDER BY data DESC LIMIT 1) as ultima_leitura
+            SUM(CASE WHEN valor > 1 THEN 1 ELSE 0 END) as leituras_acima_1kg
         FROM pesos
         WHERE valor >= 0
     `, [], (err, row) => {
@@ -347,40 +423,28 @@ app.get("/estatisticas", (req, res) => {
     });
 });
 
-// ⚙️ Configurações do sistema (com fallback)
+// ⚙️ Configurações
 app.get("/config", (req, res) => {
-    // Verificar se tabela config existe
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='config'", [], (err, tableExists) => {
-        if (err || !tableExists) {
-            // Retornar configurações padrão se tabela não existir
-            return res.json({
-                alerta_horas: "8",
-                limite_maximo_kg: "5",
-                filtro_leituras: "5",
-                modo_offline: "false"
-            });
+    db.all("SELECT * FROM config", [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
         }
-
-        db.all("SELECT * FROM config", [], (err, rows) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            const config = {};
-            rows.forEach(row => {
-                config[row.chave] = row.valor;
-            });
-            res.json(config);
+        const config = {};
+        rows.forEach(row => {
+            config[row.chave] = row.valor;
         });
+        res.json(config);
     });
 });
 
 app.put("/config/:chave", (req, res) => {
     const { chave } = req.params;
     const { valor } = req.body;
+    const agora = formatarDataHoraSQL(getDataHoraBrasil());
 
     db.run(
-        "INSERT OR REPLACE INTO config (chave, valor, data_atualizacao) VALUES (?, ?, CURRENT_TIMESTAMP)",
-        [chave, valor],
+        "INSERT OR REPLACE INTO config (chave, valor, data_atualizacao) VALUES (?, ?, ?)",
+        [chave, valor, agora],
         function(err) {
             if (err) {
                 res.status(500).json({ error: err.message });
@@ -394,10 +458,13 @@ app.put("/config/:chave", (req, res) => {
 // 🗑️ Limpar dados antigos
 app.delete("/dados/limpar", (req, res) => {
     const { dias = 30 } = req.query;
+    const dataLimite = new Date(getDataHoraBrasil());
+    dataLimite.setDate(dataLimite.getDate() - dias);
+    const dataLimiteStr = formatarDataHoraSQL(dataLimite);
 
     db.run(
-        "DELETE FROM pesos WHERE data < datetime('now', ?) AND valor >= 0",
-        [`-${dias} days`],
+        "DELETE FROM pesos WHERE data < ? AND valor >= 0",
+        [dataLimiteStr],
         function(err) {
             if (err) {
                 res.status(500).json({ error: err.message });
@@ -412,23 +479,9 @@ app.delete("/dados/limpar", (req, res) => {
     );
 });
 
-// 📤 Exportar dados em CSV
+// 📤 Exportar CSV
 app.get("/exportar/csv", (req, res) => {
-    let { inicio, fim } = req.query;
-    let query = "SELECT id, valor, data FROM pesos WHERE valor >= 0";
-    let params = [];
-
-    if (inicio) {
-        query += " AND data >= ?";
-        params.push(inicio);
-    }
-    if (fim) {
-        query += " AND data <= ?";
-        params.push(fim + " 23:59:59");
-    }
-    query += " ORDER BY data DESC";
-
-    db.all(query, params, (err, rows) => {
+    db.all("SELECT id, valor, data FROM pesos WHERE valor >= 0 ORDER BY id DESC", [], (err, rows) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -440,53 +493,40 @@ app.get("/exportar/csv", (req, res) => {
         });
 
         res.header("Content-Type", "text/csv");
-        res.attachment(`petflow_dados_${new Date().toISOString().slice(0,19)}.csv`);
+        res.attachment(`petflow_dados_${formatarDataHoraSQL(getDataHoraBrasil()).replace(/[-\s:]/g, '-')}.csv`);
         res.send(csv);
     });
 });
 
-// 📤 Exportar dados em JSON
+// 📤 Exportar JSON
 app.get("/exportar/json", (req, res) => {
-    let { inicio, fim } = req.query;
-    let query = "SELECT * FROM pesos WHERE valor >= 0";
-    let params = [];
-
-    if (inicio) {
-        query += " AND data >= ?";
-        params.push(inicio);
-    }
-    if (fim) {
-        query += " AND data <= ?";
-        params.push(fim + " 23:59:59");
-    }
-    query += " ORDER BY data DESC";
-
-    db.all(query, params, (err, rows) => {
+    db.all("SELECT * FROM pesos WHERE valor >= 0 ORDER BY id DESC", [], (err, rows) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
         }
 
         res.json({
-            exportado_em: new Date().toISOString(),
+            exportado_em: formatarDataHoraExibicao(getDataHoraBrasil()),
             total_registros: rows.length,
             dados: rows
         });
     });
 });
 
-// 🔔 Verificar alertas (8h sem consumo)
+// 🔔 Verificar alertas
 app.get("/alertas/verificar", (req, res) => {
+    const dataLimite = new Date(getDataHoraBrasil());
+    dataLimite.setHours(dataLimite.getHours() - 8);
+    const dataLimiteStr = formatarDataHoraSQL(dataLimite);
+
     db.get(`
         SELECT 
             MAX(data) as ultima_vez,
-            MAX(CASE 
-                WHEN valor > 0.05 THEN data 
-                ELSE NULL 
-            END) as ultimo_consumo
+            MAX(CASE WHEN valor > 0.05 THEN data ELSE NULL END) as ultimo_consumo
         FROM pesos 
-        WHERE valor >= 0 AND data >= datetime('now', '-8 hours')
-    `, [], (err, row) => {
+        WHERE valor >= 0 AND data >= ?
+    `, [dataLimiteStr], (err, row) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -503,44 +543,43 @@ app.get("/alertas/verificar", (req, res) => {
     });
 });
 
-// 🏠 Rota raiz - Documentação da API
-app.get("/", (req, res) => {
+// 🔍 Debug
+app.get("/admin/consultar", (req, res) => {
+    db.get("SELECT COUNT(*) as total FROM pesos", [], (err, count) => {
+        if (err) {
+            return res.status(500).json({ erro: err.message });
+        }
+
+        db.all("SELECT * FROM pesos ORDER BY id DESC LIMIT 20", [], (err, rows) => {
+            if (err) {
+                return res.status(500).json({ erro: err.message });
+            }
+
+            res.json({
+                fuso_horario: "America/Sao_Paulo (UTC-3)",
+                horario_servidor: formatarDataHoraExibicao(getDataHoraBrasil()),
+                total_registros: count.total,
+                ultimos_registros: rows
+            });
+        });
+    });
+});
+
+// Rota para documentação da API
+app.get("/api", (req, res) => {
     res.json({
         nome: "PetFlow API",
         versao: "2.0.0",
-        descricao: "API para monitoramento inteligente de alimentação de pets",
+        fuso_horario: "America/Sao_Paulo (UTC-3)",
+        horario_servidor: formatarDataHoraExibicao(getDataHoraBrasil()),
         endpoints: {
-            dados: {
-                "POST /peso": "Enviar peso do ESP32",
-                "GET /pesos": "Listar histórico (últimos 500)",
-                "GET /pesos/filtro": "Histórico com filtro de data",
-                "GET /dashboard": "Resumo do dashboard",
-                "GET /estatisticas": "Estatísticas avançadas"
-            },
-            consumo: {
-                "GET /consumo/dia": "Consumo do dia",
-                "GET /consumo/semana": "Consumo da semana",
-                "GET /consumo/mes": "Consumo do mês",
-                "GET /consumo/periodo": "Consumo por período personalizado",
-                "GET /consumo/total": "Consumo total no período"
-            },
-            exportacao: {
-                "GET /exportar/csv": "Exportar dados em CSV",
-                "GET /exportar/json": "Exportar dados em JSON"
-            },
-            config: {
-                "GET /config": "Configurações do sistema",
-                "PUT /config/:chave": "Atualizar configuração"
-            },
-            alertas: {
-                "GET /alertas/verificar": "Verificar alertas de alimentação"
-            },
-            manutencao: {
-                "DELETE /dados/limpar?dias=30": "Limpar dados antigos"
-            }
-        },
-        status: "online",
-        timestamp: new Date().toISOString()
+            "POST /peso": "Enviar peso",
+            "GET /pesos": "Histórico",
+            "GET /dashboard": "Resumo",
+            "GET /estatisticas": "Estatísticas",
+            "GET /exportar/csv": "Exportar CSV",
+            "GET /admin/consultar": "Debug"
+        }
     });
 });
 
@@ -548,45 +587,24 @@ app.get("/", (req, res) => {
 // MANUTENÇÃO AUTOMÁTICA
 // ============================================================
 
-// Limpar dados com mais de 60 dias (executar a cada 24h)
+// Limpar dados com mais de 60 dias
 setInterval(() => {
-    db.run("DELETE FROM pesos WHERE data < datetime('now', '-60 days')", function(err) {
+    const dataLimite = new Date(getDataHoraBrasil());
+    dataLimite.setDate(dataLimite.getDate() - 60);
+    const dataLimiteStr = formatarDataHoraSQL(dataLimite);
+
+    db.run("DELETE FROM pesos WHERE data < ?", [dataLimiteStr], function(err) {
         if (!err && this.changes > 0) {
             console.log(`🧹 Limpeza automática: ${this.changes} registros antigos removidos`);
         }
     });
 }, 24 * 60 * 60 * 1000);
 
-// Log de status a cada hora
-setInterval(() => {
-    db.get("SELECT COUNT(*) as total FROM pesos WHERE valor >= 0", [], (err, row) => {
-        if (!err) {
-            console.log(`📊 Status: ${row?.total || 0} registros no banco - ${new Date().toLocaleString()}`);
-        }
-    });
-}, 60 * 60 * 1000);
-
 // ============================================================
 // INICIAR SERVIDOR
 // ============================================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log("\n========================================");
-    console.log("🚀 PetFlow Backend v2.0");
-    console.log("========================================");
-    console.log(`📡 Servidor rodando em http://localhost:${PORT}`);
-    console.log(`🌐 Na rede: http://${getLocalIp()}:${PORT}`);
-    console.log("========================================");
-    console.log("📋 Endpoints disponíveis:");
-    console.log("   GET  /            - Documentação");
-    console.log("   POST /peso        - Enviar peso");
-    console.log("   GET  /pesos       - Histórico");
-    console.log("   GET  /dashboard   - Dashboard");
-    console.log("   GET  /exportar/csv - Exportar CSV");
-    console.log("========================================\n");
-});
 
-// Função para obter IP local
 function getLocalIp() {
     const { networkInterfaces } = require('os');
     const nets = networkInterfaces();
@@ -600,3 +618,13 @@ function getLocalIp() {
     }
     return 'localhost';
 }
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log("\n========================================");
+    console.log("🚀 PetFlow Backend v2.0");
+    console.log("========================================");
+    console.log(`🕐 Horário do servidor: ${formatarDataHoraExibicao(getDataHoraBrasil())}`);
+    console.log(`📡 Dashboard: http://${getLocalIp()}:${PORT}`);
+    console.log(`🔗 API: http://${getLocalIp()}:${PORT}/api`);
+    console.log("========================================\n");
+});

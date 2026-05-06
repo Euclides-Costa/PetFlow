@@ -93,7 +93,6 @@
             padding: 2rem;
         }
 
-        /* Filtros */
         .filters-section {
             background: linear-gradient(145deg, #0f3528, #0b2c20);
             border-radius: 28px;
@@ -180,7 +179,6 @@
             color: white;
         }
 
-        /* Cards de KPI */
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -226,7 +224,6 @@
             color: #f39c12;
         }
 
-        /* Gráficos */
         .chart-section {
             background: rgba(15,53,40,0.7);
             backdrop-filter: blur(8px);
@@ -274,7 +271,6 @@
             width: 100%;
         }
 
-        /* Tabela de histórico */
         .history-section {
             background: rgba(15,53,40,0.7);
             backdrop-filter: blur(8px);
@@ -375,7 +371,6 @@
 </div>
 
 <div class="container">
-    <!-- Filtros de Data -->
     <div class="filters-section">
         <div class="filters-title">
             <span>📅</span> Filtros Personalizados
@@ -390,19 +385,6 @@
                 <input type="date" id="dataFim" value="">
             </div>
             <div class="filter-group">
-                <label>Período Rápido</label>
-                <select id="periodoRapido">
-                    <option value="hoje">Hoje</option>
-                    <option value="ontem">Ontem</option>
-                    <option value="ultimos7">Últimos 7 dias</option>
-                    <option value="ultimos15">Últimos 15 dias</option>
-                    <option value="ultimos30" selected>Últimos 30 dias</option>
-                    <option value="esseMes">Este mês</option>
-                    <option value="mesPassado">Mês passado</option>
-                    <option value="todos">Todo histórico</option>
-                </select>
-            </div>
-            <div class="filter-group">
                 <label>Tipo de Gráfico</label>
                 <select id="tipoGrafico">
                     <option value="bar">Barras</option>
@@ -414,12 +396,11 @@
                 🔍 Aplicar Filtros
             </button>
             <button class="btn-filter btn-reset" id="resetFiltros">
-                ↺ Resetar
+                ↺ Resetar Filtros
             </button>
         </div>
     </div>
 
-    <!-- KPIs -->
     <div class="kpi-grid">
         <div class="kpi-card">
             <div class="kpi-title">🍖 Consumo Total</div>
@@ -453,7 +434,6 @@
         </div>
     </div>
 
-    <!-- Gráfico Principal -->
     <div class="chart-section">
         <div class="chart-header">
             <h3>📊 Consumo Diário</h3>
@@ -468,7 +448,6 @@
         </div>
     </div>
 
-    <!-- Tabela de Histórico com Exportação -->
     <div class="history-section">
         <div class="history-header">
             <h3>📋 Histórico de Medições</h3>
@@ -488,7 +467,7 @@
                 </tr>
                 </thead>
                 <tbody id="historyBody">
-                <tr><td colspan="3" style="text-align:center;">Carregando...</td></tr>
+                <tr><td colspan="3" style="text-align:center;">Carregando......</td></tr>
                 </tbody>
             </table>
         </div>
@@ -499,17 +478,11 @@
 </footer>
 
 <script>
-    // ============================================================
-    // CONFIGURAÇÃO
-    // ============================================================
-    const API_URL = "http://192.168.0.3:3000";
+    const API_URL = "http://172.20.10.2:3000";
     let consumoChart = null;
     let dadosFiltrados = [];
     let dadosCompletos = [];
 
-    // ============================================================
-    // INICIALIZAÇÃO
-    // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
         iniciarDatasPadrao();
         carregarTodosDados();
@@ -522,7 +495,6 @@
         const hoje = new Date();
         const trintaDiasAtras = new Date();
         trintaDiasAtras.setDate(hoje.getDate() - 30);
-
         document.getElementById('dataFim').valueAsDate = hoje;
         document.getElementById('dataInicio').valueAsDate = trintaDiasAtras;
     }
@@ -530,7 +502,6 @@
     function setupEventListeners() {
         document.getElementById('aplicarFiltros').addEventListener('click', aplicarFiltros);
         document.getElementById('resetFiltros').addEventListener('click', resetFiltros);
-        document.getElementById('periodoRapido').addEventListener('change', aplicarPeriodoRapido);
         document.getElementById('tipoGrafico').addEventListener('change', atualizarTipoGrafico);
         document.getElementById('refreshHistory').addEventListener('click', carregarTodosDados);
         document.getElementById('exportCSV').addEventListener('click', exportarCSV);
@@ -541,21 +512,18 @@
                 const tipo = btn.getAttribute('data-type');
                 document.getElementById('tipoGrafico').value = tipo;
                 atualizarTipoGrafico();
-
                 document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             });
         });
     }
 
-    // ============================================================
-    // CARREGAR DADOS
-    // ============================================================
     async function carregarTodosDados() {
         try {
-            const response = await fetch(`${API_URL}/pesos`);
+            const response = await fetch(`${API_URL}/pesos?limite=5000`);
             dadosCompletos = await response.json();
             dadosCompletos = dadosCompletos.filter(item => item.valor >= 0);
+            dadosCompletos.sort((a, b) => new Date(a.data) - new Date(b.data));
             aplicarFiltros();
         } catch (error) {
             console.error("Erro ao carregar:", error);
@@ -581,104 +549,69 @@
         const hoje = new Date();
         const trintaDiasAtras = new Date();
         trintaDiasAtras.setDate(hoje.getDate() - 30);
-
         document.getElementById('dataInicio').valueAsDate = trintaDiasAtras;
         document.getElementById('dataFim').valueAsDate = hoje;
-        document.getElementById('periodoRapido').value = 'ultimos30';
-
         aplicarFiltros();
     }
 
-    function aplicarPeriodoRapido() {
-        const periodo = document.getElementById('periodoRapido').value;
-        const hoje = new Date();
-        let inicio = new Date();
-
-        switch(periodo) {
-            case 'hoje':
-                inicio = new Date(hoje.setHours(0,0,0,0));
-                break;
-            case 'ontem':
-                inicio = new Date(hoje);
-                inicio.setDate(hoje.getDate() - 1);
-                break;
-            case 'ultimos7':
-                inicio.setDate(hoje.getDate() - 7);
-                break;
-            case 'ultimos15':
-                inicio.setDate(hoje.getDate() - 15);
-                break;
-            case 'ultimos30':
-                inicio.setDate(hoje.getDate() - 30);
-                break;
-            case 'esseMes':
-                inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-                break;
-            case 'mesPassado':
-                inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-                const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
-                document.getElementById('dataFim').valueAsDate = fim;
-                break;
-            case 'todos':
-                document.getElementById('dataInicio').value = '';
-                document.getElementById('dataFim').value = '';
-                aplicarFiltros();
-                return;
-        }
-
-        if (periodo !== 'todos') {
-            document.getElementById('dataInicio').valueAsDate = inicio;
-            document.getElementById('dataFim').valueAsDate = new Date();
-        }
-
-        aplicarFiltros();
-    }
-
-    // ============================================================
-    // ATUALIZAR KPIs
-    // ============================================================
     function atualizarKPIs() {
         if (dadosFiltrados.length === 0) {
             document.getElementById('totalConsumo').innerHTML = '0<span class="kpi-unit"> kg</span>';
             document.getElementById('mediaDiaria').innerHTML = '0<span class="kpi-unit"> kg/dia</span>';
             document.getElementById('maxConsumo').innerHTML = '0<span class="kpi-unit"> kg</span>';
             document.getElementById('minConsumo').innerHTML = '0<span class="kpi-unit"> kg</span>';
+            document.getElementById('totalDias').innerHTML = '0<span class="kpi-unit"> dias</span>';
+            document.getElementById('leiturasCount').innerHTML = '0 leituras';
             return;
         }
 
-        // Total consumo (soma das variações)
-        let total = 0;
-        let valores = dadosFiltrados.map(d => d.valor);
-        for (let i = 1; i < valores.length; i++) {
-            const diferenca = valores[i-1] - valores[i];
-            if (diferenca > 0) total += diferenca;
+        // Calcular consumo total (soma de TODAS as reduções de peso)
+        let consumoTotal = 0;
+        let consumoDiario = {};
+        let pesoAnterior = dadosFiltrados[0].valor;
+
+        for (let i = 1; i < dadosFiltrados.length; i++) {
+            const pesoAtual = dadosFiltrados[i].valor;
+            const diferenca = pesoAnterior - pesoAtual;
+
+            if (diferenca > 0.001) {
+                consumoTotal += diferenca;
+
+                const data = new Date(dadosFiltrados[i].data).toLocaleDateString('pt-BR');
+                if (!consumoDiario[data]) consumoDiario[data] = 0;
+                consumoDiario[data] += diferenca;
+            }
+            pesoAnterior = pesoAtual;
         }
 
-        const maximo = Math.max(...valores);
-        const minimo = Math.min(...valores.filter(v => v > 0));
+        let consumoMaximo = 0, consumoMinimo = Infinity;
+        let dataMaximo = '', dataMinimo = '';
 
-        // Encontrar datas dos extremos
-        const maxItem = dadosFiltrados.find(d => d.valor === maximo);
-        const minItem = dadosFiltrados.find(d => d.valor === minimo);
+        for (const [data, consumo] of Object.entries(consumoDiario)) {
+            if (consumo > consumoMaximo) { consumoMaximo = consumo; dataMaximo = data; }
+            if (consumo < consumoMinimo) { consumoMinimo = consumo; dataMinimo = data; }
+        }
+        if (consumoMinimo === Infinity) consumoMinimo = 0;
 
-        // Calcular dias no período
-        const dataInicio = new Date(document.getElementById('dataInicio').value);
-        const dataFim = new Date(document.getElementById('dataFim').value);
-        const diasPeriodo = Math.max(1, Math.ceil((dataFim - dataInicio) / (1000 * 60 * 60 * 24)));
+        const diasUnicos = new Set();
+        dadosFiltrados.forEach(item => {
+            diasUnicos.add(new Date(item.data).toLocaleDateString('pt-BR'));
+        });
+        const diasPeriodo = diasUnicos.size;
+        const mediaDiaria = diasPeriodo > 0 ? consumoTotal / diasPeriodo : 0;
 
-        document.getElementById('totalConsumo').innerHTML = total.toFixed(2) + '<span class="kpi-unit"> kg</span>';
-        document.getElementById('mediaDiaria').innerHTML = (total / diasPeriodo).toFixed(2) + '<span class="kpi-unit"> kg/dia</span>';
-        document.getElementById('maxConsumo').innerHTML = maximo.toFixed(3) + '<span class="kpi-unit"> kg</span>';
-        document.getElementById('minConsumo').innerHTML = minimo.toFixed(3) + '<span class="kpi-unit"> kg</span>';
-        document.getElementById('dataMaxConsumo').innerHTML = maxItem ? new Date(maxItem.data).toLocaleDateString() : '-';
-        document.getElementById('dataMinConsumo').innerHTML = minItem ? new Date(minItem.data).toLocaleDateString() : '-';
+        document.getElementById('totalConsumo').innerHTML = consumoTotal.toFixed(2) + '<span class="kpi-unit"> kg</span>';
+        document.getElementById('mediaDiaria').innerHTML = mediaDiaria.toFixed(2) + '<span class="kpi-unit"> kg/dia</span>';
+        document.getElementById('maxConsumo').innerHTML = consumoMaximo.toFixed(3) + '<span class="kpi-unit"> kg</span>';
+        document.getElementById('minConsumo').innerHTML = consumoMinimo.toFixed(3) + '<span class="kpi-unit"> kg</span>';
+        document.getElementById('dataMaxConsumo').innerHTML = dataMaximo || '-';
+        document.getElementById('dataMinConsumo').innerHTML = dataMinimo || '-';
         document.getElementById('totalDias').innerHTML = diasPeriodo + '<span class="kpi-unit"> dias</span>';
         document.getElementById('leiturasCount').innerHTML = dadosFiltrados.length + ' leituras';
+
+        console.log('📊 Consumo total:', consumoTotal.toFixed(2), 'kg | Dias:', diasPeriodo);
     }
 
-    // ============================================================
-    // GRÁFICO
-    // ============================================================
     function initChart() {
         const ctx = document.getElementById('consumoChart').getContext('2d');
         consumoChart = new Chart(ctx, {
@@ -697,11 +630,8 @@
         if (!consumoChart) return;
 
         const tipo = document.getElementById('tipoGrafico').value;
-        let tipoFinal = tipo === 'area' ? 'line' : tipo;
+        consumoChart.config.type = tipo === 'area' ? 'line' : tipo;
 
-        consumoChart.config.type = tipoFinal;
-
-        // Agrupar por dia
         const consumoDiario = {};
         dadosFiltrados.forEach(item => {
             const data = new Date(item.data).toLocaleDateString('pt-BR');
@@ -733,15 +663,13 @@
             consumoChart.data.datasets[0].fill = false;
             consumoChart.data.datasets[0].backgroundColor = 'transparent';
         }
-
         consumoChart.update();
     }
 
     function atualizarTipoGrafico() {
         if (!consumoChart) return;
         const tipo = document.getElementById('tipoGrafico').value;
-        let tipoFinal = tipo === 'area' ? 'line' : tipo;
-        consumoChart.config.type = tipoFinal;
+        consumoChart.config.type = tipo === 'area' ? 'line' : tipo;
 
         if (tipo === 'area') {
             consumoChart.data.datasets[0].fill = true;
@@ -756,9 +684,6 @@
         consumoChart.update();
     }
 
-    // ============================================================
-    // TABELA DE HISTÓRICO
-    // ============================================================
     function atualizarTabela() {
         const tbody = document.getElementById('historyBody');
         if (dadosFiltrados.length === 0) {
@@ -776,15 +701,11 @@
         `).join('');
     }
 
-    // ============================================================
-    // EXPORTAÇÃO
-    // ============================================================
     function exportarCSV() {
         let csv = "id,peso_kg,data_hora\n";
         dadosFiltrados.forEach(row => {
             csv += `${row.id},${row.valor},${row.data}\n`;
         });
-
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -805,18 +726,15 @@
         URL.revokeObjectURL(url);
     }
 
-    // ============================================================
-    // PESO EM TEMPO REAL
-    // ============================================================
     async function iniciarPollingPeso() {
         setInterval(async () => {
             try {
-                const response = await fetch(`${API_URL}/pesos`);
+                const response = await fetch(`${API_URL}/pesos?limite=1`);
                 const dados = await response.json();
                 if (dados && dados.length > 0) {
-                    const ultimo = dados[dados.length - 1];
+                    const ultimo = dados[0];
                     document.getElementById('pesoAtual').innerHTML = parseFloat(ultimo.valor).toFixed(3) + '<span class="kpi-unit"> kg</span>';
-                    document.getElementById('ultimaAtualizacao').innerHTML = new Date(ultimo.data).toLocaleTimeString();
+                    document.getElementById('ultimaAtualizacao').innerHTML = new Date(ultimo.data).toLocaleTimeString('pt-BR');
                 }
             } catch (error) {
                 console.warn("Erro ao buscar peso:", error);
