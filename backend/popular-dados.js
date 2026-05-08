@@ -1,7 +1,8 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const bcrypt = require('bcryptjs');
 
-const db = new sqlite3.Database(path.join(__dirname, "pesos.db"));
+const db = new sqlite3.Database(path.join(__dirname, "petflow.db"));
 
 // ============================================================
 // CONFIGURAÇÕES
@@ -26,6 +27,15 @@ const HORARIOS_ALIMENTACAO = [
     { hora: 18, minuto: 0, nome: "Jantar", fator: 0.20 },            // 20% do consumo diário
     { hora: 21, minuto: 0, nome: "Ceia", fator: 0.05 }               // 5% do consumo diário
 ];
+
+// Usuário padrão para associar os dados (será criado se não existir)
+const USUARIO_PADRAO = {
+    nome: "Usuário Demo",
+    email: "demo@petflow.com",
+    senha: "123456",
+    raca_animal: "SRD",
+    nome_racao: "Ração Premium"
+};
 
 // ============================================================
 // FUNÇÕES AUXILIARES
@@ -55,10 +65,62 @@ function getConsumoDiario() {
 }
 
 // ============================================================
+// CRIAR USUÁRIO DEMO
+// ============================================================
+
+async function criarUsuarioDemo() {
+    console.log('\n👤 Verificando usuário demo...');
+
+    return new Promise(async (resolve, reject) => {
+        // Verificar se usuário já existe
+        db.get("SELECT id FROM usuarios WHERE email = ?", [USUARIO_PADRAO.email], async (err, row) => {
+            if (err) {
+                console.error('Erro ao verificar usuário:', err);
+                reject(err);
+                return;
+            }
+
+            if (row) {
+                console.log(`✅ Usuário demo já existe (ID: ${row.id})`);
+                resolve(row.id);
+                return;
+            }
+
+            // Criar usuário demo
+            console.log('📝 Criando usuário demo...');
+            const senhaHash = await bcrypt.hash(USUARIO_PADRAO.senha, 10);
+            const dataCriacao = formatarDataSQL(
+                new Date().getFullYear(),
+                new Date().getMonth() + 1,
+                new Date().getDate(),
+                0, 0, 0
+            );
+
+            db.run(
+                `INSERT INTO usuarios (nome, email, senha, raca_animal, nome_racao, data_criacao)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [USUARIO_PADRAO.nome, USUARIO_PADRAO.email, senhaHash, USUARIO_PADRAO.raca_animal, USUARIO_PADRAO.nome_racao, dataCriacao],
+                function(err) {
+                    if (err) {
+                        console.error('Erro ao criar usuário:', err);
+                        reject(err);
+                        return;
+                    }
+                    console.log(`✅ Usuário demo criado (ID: ${this.lastID})`);
+                    console.log(`   Email: ${USUARIO_PADRAO.email}`);
+                    console.log(`   Senha: ${USUARIO_PADRAO.senha}`);
+                    resolve(this.lastID);
+                }
+            );
+        });
+    });
+}
+
+// ============================================================
 // GERAR DADOS PARA UM MÊS ESPECÍFICO
 // ============================================================
 
-function gerarDadosMes(ano, mes, diasNoMes) {
+function gerarDadosMes(ano, mes, diasNoMes, usuario_id) {
     const dados = [];
     let pesoAtualComedouro = PESO_MAXIMO_COMEDOURO * (0.8 + Math.random() * 0.4);
 
@@ -92,6 +154,7 @@ function gerarDadosMes(ano, mes, diasNoMes) {
             const horaRecarga = Math.floor(Math.random() * 3) + 22; // Entre 22h e 0h
             const dataRecarga = formatarDataSQL(ano, mes, dia, horaRecarga, Math.floor(Math.random() * 60));
             dados.push({
+                usuario_id: usuario_id,
                 valor: parseFloat(pesoAtualComedouro.toFixed(3)),
                 data: dataRecarga
             });
@@ -115,6 +178,7 @@ function gerarDadosMes(ano, mes, diasNoMes) {
                 const pesoAntes = pesoAtualComedouro;
                 const dataAntes = formatarDataSQL(ano, mes, dia, horario.hora, horario.minuto - 5);
                 dados.push({
+                    usuario_id: usuario_id,
                     valor: parseFloat(pesoAntes.toFixed(3)),
                     data: dataAntes
                 });
@@ -126,6 +190,7 @@ function gerarDadosMes(ano, mes, diasNoMes) {
                 // Peso DEPOIS de comer
                 const dataDepois = formatarDataSQL(ano, mes, dia, horario.hora, horario.minuto + 5);
                 dados.push({
+                    usuario_id: usuario_id,
                     valor: parseFloat(pesoAtualComedouro.toFixed(3)),
                     data: dataDepois
                 });
@@ -146,6 +211,7 @@ function gerarDadosMes(ano, mes, diasNoMes) {
 
             if (!leituraExistente) {
                 dados.push({
+                    usuario_id: usuario_id,
                     valor: parseFloat((pesoAtualComedouro + (Math.random() - 0.5) * 0.05).toFixed(3)),
                     data: dataExtra
                 });
@@ -155,6 +221,7 @@ function gerarDadosMes(ano, mes, diasNoMes) {
         // Registrar peso ao final do dia
         const dataFinalDia = formatarDataSQL(ano, mes, dia, 23, 59, 59);
         dados.push({
+            usuario_id: usuario_id,
             valor: parseFloat(pesoAtualComedouro.toFixed(3)),
             data: dataFinalDia
         });
@@ -182,8 +249,8 @@ function inserirDados(dados, mes, ano) {
             db.run("BEGIN TRANSACTION");
 
             dados.forEach(dado => {
-                db.run("INSERT INTO pesos (valor, data) VALUES (?, ?)",
-                    [dado.valor, dado.data],
+                db.run("INSERT INTO pesos (usuario_id, valor, data) VALUES (?, ?, ?)",
+                    [dado.usuario_id, dado.valor, dado.data],
                     (err) => {
                         if (err) {
                             console.error(`Erro ao inserir: ${err.message}`);
@@ -218,8 +285,15 @@ async function popularBancoCompleto() {
     console.log(`🍖 Peso máximo do comedouro: ${PESO_MAXIMO_COMEDOURO}kg`);
     console.log('========================================\n');
 
-    // Verificar se já existem dados
-    db.get("SELECT COUNT(*) as total FROM pesos", [], async (err, row) => {
+    // Criar usuário demo
+    const usuario_id = await criarUsuarioDemo();
+    if (!usuario_id) {
+        console.error('❌ Não foi possível criar/obter usuário demo');
+        return;
+    }
+
+    // Verificar se já existem dados para este usuário
+    db.get("SELECT COUNT(*) as total FROM pesos WHERE usuario_id = ?", [usuario_id], async (err, row) => {
         if (err) {
             console.error('Erro ao verificar banco:', err);
             return;
@@ -228,7 +302,7 @@ async function popularBancoCompleto() {
         let limpar = false;
 
         if (row.total > 0) {
-            console.log(`⚠️ Banco já contém ${row.total} registros.`);
+            console.log(`⚠️ Banco já contém ${row.total} registros para o usuário demo.`);
             console.log('Deseja limpar os dados existentes? (s/n)');
 
             const readline = require('readline').createInterface({
@@ -253,7 +327,7 @@ async function popularBancoCompleto() {
             if (limpar || row.total > 0) {
                 console.log('\n🧹 Limpando dados existentes...');
                 await new Promise((resolve) => {
-                    db.run("DELETE FROM pesos", [], (err) => {
+                    db.run("DELETE FROM pesos WHERE usuario_id = ?", [usuario_id], (err) => {
                         if (err) {
                             console.error('Erro ao limpar:', err);
                         } else {
@@ -268,14 +342,15 @@ async function popularBancoCompleto() {
             const meses = [
                 { nome: "Fevereiro", ano: 2026, mes: 2, dias: 28 },
                 { nome: "Março", ano: 2026, mes: 3, dias: 31 },
-                { nome: "Abril", ano: 2026, mes: 4, dias: 30 }
+                { nome: "Abril", ano: 2026, mes: 4, dias: 30 },
+                { nome: "Maio", ano: 2026, mes: 5, dias: 31 }
             ];
 
             let totalRegistros = 0;
 
             for (const mes of meses) {
                 console.log(`\n📊 Processando ${mes.nome}/${mes.ano}...`);
-                const dados = gerarDadosMes(mes.ano, mes.mes, mes.dias);
+                const dados = gerarDadosMes(mes.ano, mes.mes, mes.dias, usuario_id);
                 const inseridos = await inserirDados(dados, mes.nome, mes.ano);
                 totalRegistros += inseridos;
             }
@@ -284,9 +359,10 @@ async function popularBancoCompleto() {
             console.log('✅ POPULAÇÃO CONCLUÍDA!');
             console.log('========================================');
             console.log(`📊 Total de registros inseridos: ${totalRegistros}`);
+            console.log(`👤 Usuário associado: ${USUARIO_PADRAO.email} (senha: ${USUARIO_PADRAO.senha})`);
 
             // Mostrar estatísticas finais
-            mostrarEstatisticas();
+            mostrarEstatisticas(usuario_id);
         }
     });
 }
@@ -295,7 +371,7 @@ async function popularBancoCompleto() {
 // ESTATÍSTICAS FINAIS
 // ============================================================
 
-function mostrarEstatisticas() {
+function mostrarEstatisticas(usuario_id) {
     console.log('\n📊 ESTATÍSTICAS DOS DADOS GERADOS');
     console.log('========================================');
 
@@ -304,10 +380,10 @@ function mostrarEstatisticas() {
             COUNT(*) as total,
             MIN(valor) as minimo,
             MAX(valor) as maximo,
-            AVG(valor) as medio,
-            SUM(valor) as soma
+            AVG(valor) as medio
         FROM pesos
-    `, [], (err, stats) => {
+        WHERE usuario_id = ?
+    `, [usuario_id], (err, stats) => {
         if (err) {
             console.error('Erro:', err);
             return;
@@ -327,9 +403,10 @@ function mostrarEstatisticas() {
                 MAX(valor) as maximo,
                 AVG(valor) as medio
             FROM pesos
+            WHERE usuario_id = ?
             GROUP BY strftime('%m/%Y', data)
             ORDER BY data
-        `, [], (err, meses) => {
+        `, [usuario_id], (err, meses) => {
             console.log('\n📅 RESUMO POR MÊS:');
             console.log('----------------------------------------');
             meses.forEach(mes => {
@@ -342,10 +419,10 @@ function mostrarEstatisticas() {
                     strftime('%Y-%m-%d', data) as dia,
                     MAX(valor) - MIN(valor) as consumo_dia
                 FROM pesos
-                WHERE valor >= 0
+                WHERE usuario_id = ? AND valor >= 0
                 GROUP BY strftime('%Y-%m-%d', data)
                 HAVING consumo_dia > 0
-            `, [], (err, consumos) => {
+            `, [usuario_id], (err, consumos) => {
                 if (!err && consumos.length > 0) {
                     const totalConsumo = consumos.reduce((sum, c) => sum + c.consumo_dia, 0);
                     const mediaConsumo = totalConsumo / consumos.length;
@@ -353,7 +430,11 @@ function mostrarEstatisticas() {
                     console.log(`📊 Faixa esperada: ${CONSUMO_MINIMO_DIARIO * 1000}g - ${CONSUMO_MAXIMO_DIARIO * 1000}g`);
                 }
 
-                console.log('\n========================================\n');
+                console.log('\n========================================');
+                console.log('🔑 Dados de acesso:');
+                console.log(`   Email: ${USUARIO_PADRAO.email}`);
+                console.log(`   Senha: ${USUARIO_PADRAO.senha}`);
+                console.log('========================================\n');
                 db.close();
             });
         });
@@ -370,6 +451,7 @@ console.log('Este script irá gerar dados de consumo para:');
 console.log('   📅 Fevereiro/2026 (28 dias)');
 console.log('   📅 Março/2026 (31 dias)');
 console.log('   📅 Abril/2026 (30 dias)');
+console.log('   📅 Maio/2026 (31 dias)');
 console.log(`🍖 Consumo diário: ${CONSUMO_MINIMO_DIARIO * 1000}g - ${CONSUMO_MAXIMO_DIARIO * 1000}g`);
 console.log('========================================\n');
 

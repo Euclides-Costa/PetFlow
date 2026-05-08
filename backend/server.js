@@ -2,23 +2,29 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
 const path = require("path");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const fs = require("fs");
 
 const app = express();
+
+// ============================================================
+// CONFIGURAÇÃO
+// ============================================================
+const JWT_SECRET = "petflow_secret_key_2024";
+const JWT_EXPIRES_IN = "7d";
 
 // ============================================================
 // FUNÇÕES PARA DATA/HORA LOCAL DO BRASIL (UTC-3)
 // ============================================================
 
-// Função para obter data/hora local do Brasil
 function getDataHoraBrasil() {
     const agora = new Date();
-    // Converter para UTC-3 (Brasília)
     const offsetBrasil = -3;
     const utc = agora.getTime() + (agora.getTimezoneOffset() * 60000);
     return new Date(utc + (offsetBrasil * 3600000));
 }
 
-// Formatar para exibição (DD/MM/AAAA HH:MM:SS)
 function formatarDataHoraExibicao(data) {
     const dia = data.getDate().toString().padStart(2, '0');
     const mes = (data.getMonth() + 1).toString().padStart(2, '0');
@@ -29,7 +35,6 @@ function formatarDataHoraExibicao(data) {
     return `${dia}/${mes}/${ano} ${hora}:${minuto}:${segundo}`;
 }
 
-// Formatar para SQLite (YYYY-MM-DD HH:MM:SS)
 function formatarDataHoraSQL(data) {
     const ano = data.getFullYear();
     const mes = (data.getMonth() + 1).toString().padStart(2, '0');
@@ -41,73 +46,273 @@ function formatarDataHoraSQL(data) {
 }
 
 // ============================================================
-// CONFIGURAÇÃO CORS
+// MIDDLEWARE
 // ============================================================
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 app.use(express.json());
 
 // ============================================================
-// SERVIDOR ESTÁTICO PARA O FRONTEND
+// CAMINHO DO FRONTEND (FORA DA PASTA BACKEND)
 // ============================================================
-app.use(express.static(path.join(__dirname, 'frontend')));
+// O frontend está na pasta raiz do projeto, ao lado da pasta backend
+const frontendPath = path.join(__dirname, '..', 'frontend');
 
-// Rota principal - Dashboard
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
-});
+// Verificar se a pasta frontend existe
+if (!fs.existsSync(frontendPath)) {
+    console.error(`❌ Pasta frontend não encontrada em: ${frontendPath}`);
+    console.log('📁 Certifique-se de que a pasta "frontend" existe ao lado da pasta "backend"');
+    console.log('📁 Estrutura esperada:');
+    console.log('   PetFlow/');
+    console.log('   ├── backend/');
+    console.log('   │   └── server.js');
+    console.log('   └── frontend/');
+    console.log('       ├── login.html');
+    console.log('       ├── cadastro.html');
+    console.log('       └── dashboard.html');
+} else {
+    console.log(`✅ Frontend encontrado em: ${frontendPath}`);
+}
+
+// Servir arquivos estáticos do frontend
+app.use(express.static(frontendPath));
 
 // ============================================================
-// BANCO DE DADOS (com campo data como TEXT)
+// BANCO DE DADOS
 // ============================================================
-const db = new sqlite3.Database(path.join(__dirname, "pesos.db"));
+const db = new sqlite3.Database(path.join(__dirname, "petflow.db"));
 
-// Criar tabela principal (data como TEXT para armazenar formato brasileiro)
+// Criar tabela de usuários
 db.run(`
-    CREATE TABLE IF NOT EXISTS pesos (
-                                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                         valor REAL,
-                                         data TEXT
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        senha TEXT NOT NULL,
+        raca_animal TEXT,
+        nome_racao TEXT,
+        data_criacao TEXT,
+        ultimo_login TEXT
     )
 `);
 
-// Criar tabela de configurações
+// Criar tabela de pesos (associada ao usuário)
+db.run(`
+    CREATE TABLE IF NOT EXISTS pesos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER,
+        valor REAL,
+        data TEXT,
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+    )
+`);
+
+// Criar tabela de configurações por usuário
 db.run(`
     CREATE TABLE IF NOT EXISTS config (
-                                          chave TEXT PRIMARY KEY,
-                                          valor TEXT,
-                                          data_atualizacao TEXT
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER,
+        chave TEXT,
+        valor TEXT,
+        data_atualizacao TEXT,
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+        UNIQUE(usuario_id, chave)
     )
-`, (err) => {
-    if (err) {
-        console.log("⚠️ Tabela config já existe ou erro:", err.message);
-    } else {
-        console.log("✅ Tabela config criada com sucesso");
+`);
+
+// ============================================================
+// ENDPOINTS DE AUTENTICAÇÃO
+// ============================================================
+
+// 📝 Cadastro de usuário
+app.post("/api/cadastrar", async (req, res) => {
+    const { nome, email, senha, confirmarSenha, raca_animal, nome_racao } = req.body;
+
+    if (!nome || !email || !senha || !confirmarSenha) {
+        return res.status(400).json({ error: "Todos os campos obrigatórios devem ser preenchidos." });
+    }
+
+    if (senha !== confirmarSenha) {
+        return res.status(400).json({ error: "As senhas não coincidem." });
+    }
+
+    if (senha.length < 6) {
+        return res.status(400).json({ error: "A senha deve ter no mínimo 6 caracteres." });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: "Email inválido." });
+    }
+
+    try {
+        const emailExistente = await new Promise((resolve) => {
+            db.get("SELECT id FROM usuarios WHERE email = ?", [email], (err, row) => {
+                resolve(row);
+            });
+        });
+
+        if (emailExistente) {
+            return res.status(400).json({ error: "Este email já está cadastrado." });
+        }
+
+        const senhaHash = await bcrypt.hash(senha, 10);
+        const dataCriacao = formatarDataHoraSQL(getDataHoraBrasil());
+
+        const result = await new Promise((resolve, reject) => {
+            db.run(
+                `INSERT INTO usuarios (nome, email, senha, raca_animal, nome_racao, data_criacao)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [nome, email, senhaHash, raca_animal || null, nome_racao || null, dataCriacao],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+
         const agora = formatarDataHoraSQL(getDataHoraBrasil());
-        db.run(`INSERT OR IGNORE INTO config (chave, valor, data_atualizacao) VALUES ('alerta_horas', '8', ?)`, [agora]);
-        db.run(`INSERT OR IGNORE INTO config (chave, valor, data_atualizacao) VALUES ('limite_maximo_kg', '5', ?)`, [agora]);
-        db.run(`INSERT OR IGNORE INTO config (chave, valor, data_atualizacao) VALUES ('filtro_leituras', '5', ?)`, [agora]);
+        db.run(
+            `INSERT INTO config (usuario_id, chave, valor, data_atualizacao)
+             VALUES (?, 'alerta_horas', '8', ?),
+                    (?, 'limite_maximo_kg', '5', ?),
+                    (?, 'filtro_leituras', '5', ?)`,
+            [result, agora, result, agora, result, agora]
+        );
+
+        const token = jwt.sign(
+            { id: result, email: email, nome: nome },
+            JWT_SECRET,
+            { expiresIn: JWT_EXPIRES_IN }
+        );
+
+        res.status(201).json({
+            success: true,
+            message: "Cadastro realizado com sucesso!",
+            token: token,
+            usuario: {
+                id: result,
+                nome: nome,
+                email: email,
+                raca_animal: raca_animal || null,
+                nome_racao: nome_racao || null
+            }
+        });
+
+    } catch (error) {
+        console.error("Erro no cadastro:", error);
+        res.status(500).json({ error: "Erro interno do servidor." });
     }
 });
 
-// Limpar dados negativos existentes
-db.run("DELETE FROM pesos WHERE valor < 0", [], (err) => {
-    if (!err) {
-        console.log("🧹 Dados negativos verificados");
+// 🔐 Login de usuário
+app.post("/api/login", async (req, res) => {
+    const { email, senha } = req.body;
+
+    if (!email || !senha) {
+        return res.status(400).json({ error: "Email e senha são obrigatórios." });
+    }
+
+    try {
+        const usuario = await new Promise((resolve, reject) => {
+            db.get("SELECT * FROM usuarios WHERE email = ?", [email], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+
+        if (!usuario) {
+            return res.status(401).json({ error: "Email ou senha inválidos." });
+        }
+
+        const senhaValida = await bcrypt.compare(senha, usuario.senha);
+        if (!senhaValida) {
+            return res.status(401).json({ error: "Email ou senha inválidos." });
+        }
+
+        const agora = formatarDataHoraSQL(getDataHoraBrasil());
+        db.run("UPDATE usuarios SET ultimo_login = ? WHERE id = ?", [agora, usuario.id]);
+
+        const token = jwt.sign(
+            { id: usuario.id, email: usuario.email, nome: usuario.nome },
+            JWT_SECRET,
+            { expiresIn: JWT_EXPIRES_IN }
+        );
+
+        res.json({
+            success: true,
+            message: "Login realizado com sucesso!",
+            token: token,
+            usuario: {
+                id: usuario.id,
+                nome: usuario.nome,
+                email: usuario.email,
+                raca_animal: usuario.raca_animal,
+                nome_racao: usuario.nome_racao
+            }
+        });
+
+    } catch (error) {
+        console.error("Erro no login:", error);
+        res.status(500).json({ error: "Erro interno do servidor." });
     }
 });
 
+// 🔒 Verificar token
+app.get("/api/verificar", autenticarToken, async (req, res) => {
+    try {
+        const usuario = await new Promise((resolve, reject) => {
+            db.get(
+                "SELECT id, nome, email, raca_animal, nome_racao FROM usuarios WHERE id = ?",
+                [req.usuario.id],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+
+        if (!usuario) {
+            return res.status(404).json({ error: "Usuário não encontrado." });
+        }
+
+        res.json({
+            valido: true,
+            usuario: usuario
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Erro interno." });
+    }
+});
+
+// Middleware para verificar token
+function autenticarToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ error: "Acesso negado. Token não fornecido." });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.usuario = decoded;
+        next();
+    } catch (error) {
+        return res.status(403).json({ error: "Token inválido ou expirado." });
+    }
+}
+
 // ============================================================
-// ENDPOINTS PRINCIPAIS
+// ENDPOINTS DE PESOS
 // ============================================================
 
-// 📡 Receber dados do ESP32 (com data gerada pelo JavaScript)
-app.post("/peso", (req, res) => {
+app.post("/peso", autenticarToken, (req, res) => {
     let { peso } = req.body;
+    const usuario_id = req.usuario.id;
 
     if (peso === undefined || peso === null) {
         return res.status(400).json({ error: "Peso não informado" });
@@ -117,24 +322,23 @@ app.post("/peso", (req, res) => {
 
     if (peso < 0) {
         console.log(`⚠️ Valor negativo ignorado: ${peso} kg`);
-        return res.json({ status: "ignored", reason: "negative value", peso: peso });
+        return res.json({ status: "ignored", reason: "negative value" });
     }
 
     if (peso > 10) {
         console.log(`⚠️ Valor muito alto ignorado: ${peso} kg`);
-        return res.json({ status: "ignored", reason: "value too high", peso: peso });
+        return res.json({ status: "ignored", reason: "value too high" });
     }
 
-    // Usar JavaScript para obter o horário local correto do Brasil
     const dataHoraBrasil = getDataHoraBrasil();
     const dataFormatada = formatarDataHoraSQL(dataHoraBrasil);
     const dataExibicao = formatarDataHoraExibicao(dataHoraBrasil);
 
-    console.log(`📊 Peso salvo: ${peso.toFixed(3)} kg - ${dataExibicao}`);
+    console.log(`📊 [Usuário ${usuario_id}] Peso salvo: ${peso.toFixed(3)} kg - ${dataExibicao}`);
 
     db.run(
-        "INSERT INTO pesos (valor, data) VALUES (?, ?)",
-        [peso, dataFormatada],
+        "INSERT INTO pesos (usuario_id, valor, data) VALUES (?, ?, ?)",
+        [usuario_id, peso, dataFormatada],
         function(err) {
             if (err) {
                 console.error("Erro ao salvar:", err);
@@ -150,12 +354,13 @@ app.post("/peso", (req, res) => {
     );
 });
 
-// 📊 Histórico completo
-app.get("/pesos", (req, res) => {
+app.get("/pesos", autenticarToken, (req, res) => {
     const { limite = 500 } = req.query;
+    const usuario_id = req.usuario.id;
+
     db.all(
-        "SELECT * FROM pesos WHERE valor >= 0 ORDER BY id DESC LIMIT ?",
-        [limite],
+        "SELECT * FROM pesos WHERE usuario_id = ? AND valor >= 0 ORDER BY id DESC LIMIT ?",
+        [usuario_id, limite],
         (err, rows) => {
             if (err) {
                 res.status(500).json({ error: err.message });
@@ -166,367 +371,19 @@ app.get("/pesos", (req, res) => {
     );
 });
 
-// 📅 Histórico com filtro de data
-app.get("/pesos/filtro", (req, res) => {
-    let { inicio, fim, limite = 1000 } = req.query;
-    let query = "SELECT * FROM pesos WHERE valor >= 0";
-    let params = [];
-
-    if (inicio) {
-        query += " AND date(data) >= date(?)";
-        params.push(inicio);
-    }
-    if (fim) {
-        query += " AND date(data) <= date(?)";
-        params.push(fim);
-    }
-
-    query += " ORDER BY id DESC LIMIT ?";
-    params.push(limite);
-
-    db.all(query, params, (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(rows);
-    });
-});
-
-// 📊 Consumo agregado por período
-app.get("/consumo/periodo", (req, res) => {
-    let { inicio, fim, grupo = "dia" } = req.query;
-    let groupBy = "";
-
-    switch(grupo) {
-        case "hora":
-            groupBy = "substr(data, 1, 13)";
-            break;
-        case "dia":
-            groupBy = "substr(data, 1, 10)";
-            break;
-        case "semana":
-            groupBy = "strftime('%Y-%W', data)";
-            break;
-        case "mes":
-            groupBy = "substr(data, 1, 7)";
-            break;
-        default:
-            groupBy = "substr(data, 1, 10)";
-    }
-
-    let query = `
-        SELECT
-            ${groupBy} as periodo,
-            MIN(valor) as peso_minimo,
-            MAX(valor) as peso_maximo,
-            AVG(valor) as peso_medio,
-            COUNT(*) as leituras
-        FROM pesos
-        WHERE valor >= 0
-    `;
-    let params = [];
-
-    if (inicio) {
-        query += " AND date(data) >= date(?)";
-        params.push(inicio);
-    }
-    if (fim) {
-        query += " AND date(data) <= date(?)";
-        params.push(fim);
-    }
-
-    query += " GROUP BY periodo ORDER BY periodo";
-
-    db.all(query, params, (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(rows);
-    });
-});
-
-// 🍖 Consumo total
-app.get("/consumo/total", (req, res) => {
-    let { inicio, fim } = req.query;
-    let query = "SELECT valor, data FROM pesos WHERE valor >= 0 ORDER BY id ASC";
-    let params = [];
-
-    if (inicio) {
-        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND date(data) >= date(?) ORDER BY id ASC";
-        params.push(inicio);
-    }
-    if (fim && params.length > 0) {
-        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND date(data) >= date(?) AND date(data) <= date(?) ORDER BY id ASC";
-        params.push(fim);
-    } else if (fim) {
-        query = "SELECT valor, data FROM pesos WHERE valor >= 0 AND date(data) <= date(?) ORDER BY id ASC";
-        params.push(fim);
-    }
-
-    db.all(query, params, (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-
-        let consumoTotal = 0;
-        for (let i = 1; i < rows.length; i++) {
-            const diferenca = rows[i-1].valor - rows[i].valor;
-            if (diferenca > 0) {
-                consumoTotal += diferenca;
-            }
-        }
-
-        res.json({
-            total_consumo_kg: parseFloat(consumoTotal.toFixed(3)),
-            numero_leituras: rows.length,
-            periodo_inicio: inicio || rows[0]?.data,
-            periodo_fim: fim || rows[rows.length-1]?.data
-        });
-    });
-});
-
-// 📅 Consumo do dia
-app.get("/consumo/dia", (req, res) => {
-    const hoje = formatarDataHoraSQL(getDataHoraBrasil()).split(' ')[0];
-
-    db.all(`
-        SELECT
-            substr(data, 1, 10) as dia,
-            SUM(valor) as total,
-            COUNT(*) as leituras,
-            MIN(valor) as minimo,
-            MAX(valor) as maximo
-        FROM pesos
-        WHERE substr(data, 1, 10) = ? AND valor >= 0
-        GROUP BY substr(data, 1, 10)
-    `, [hoje], (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(rows);
-    });
-});
-
-// 📆 Consumo da semana
-app.get("/consumo/semana", (req, res) => {
-    const hoje = getDataHoraBrasil();
-    const dataLimite = new Date(hoje);
-    dataLimite.setDate(hoje.getDate() - 7);
-    const dataLimiteStr = formatarDataHoraSQL(dataLimite).split(' ')[0];
-
-    db.all(`
-        SELECT
-            strftime('%w', data) as dia_semana,
-            CASE strftime('%w', data)
-                WHEN '0' THEN 'Domingo'
-                WHEN '1' THEN 'Segunda'
-                WHEN '2' THEN 'Terça'
-                WHEN '3' THEN 'Quarta'
-                WHEN '4' THEN 'Quinta'
-                WHEN '5' THEN 'Sexta'
-                WHEN '6' THEN 'Sábado'
-                END as nome_dia,
-            SUM(valor) as total,
-            AVG(valor) as media,
-            COUNT(*) as leituras
-        FROM pesos
-        WHERE substr(data, 1, 10) >= ? AND valor >= 0
-        GROUP BY dia_semana
-        ORDER BY dia_semana
-    `, [dataLimiteStr], (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(rows);
-    });
-});
-
-// 📅 Consumo do mês
-app.get("/consumo/mes", (req, res) => {
-    const hoje = getDataHoraBrasil();
-    const dataLimite = new Date(hoje);
-    dataLimite.setDate(hoje.getDate() - 30);
-    const dataLimiteStr = formatarDataHoraSQL(dataLimite).split(' ')[0];
-
-    db.all(`
-        SELECT
-            strftime('%W', data) as semana,
-            'Semana ' || (strftime('%W', data) - strftime('%W', ?) + 1) as nome_semana,
-            SUM(valor) as total,
-            AVG(valor) as media,
-            COUNT(*) as leituras,
-            MIN(valor) as minimo,
-            MAX(valor) as maximo
-        FROM pesos
-        WHERE substr(data, 1, 10) >= ? AND valor >= 0
-        GROUP BY semana
-        ORDER BY semana
-    `, [dataLimiteStr, dataLimiteStr], (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(rows);
-    });
-});
-
-// 📊 Dashboard resumo
-app.get("/dashboard", (req, res) => {
-    const hoje = formatarDataHoraSQL(getDataHoraBrasil()).split(' ')[0];
-    const dataLimite7 = new Date(getDataHoraBrasil());
-    dataLimite7.setDate(dataLimite7.getDate() - 7);
-    const dataLimite30 = new Date(getDataHoraBrasil());
-    dataLimite30.setDate(dataLimite30.getDate() - 30);
-    const dataLimite7Str = formatarDataHoraSQL(dataLimite7).split(' ')[0];
-    const dataLimite30Str = formatarDataHoraSQL(dataLimite30).split(' ')[0];
-
-    db.get(`
-        SELECT
-            COALESCE((SELECT SUM(valor) FROM pesos WHERE substr(data, 1, 10) = ? AND valor >= 0), 0) as consumo_hoje,
-            COALESCE((SELECT SUM(valor) FROM pesos WHERE substr(data, 1, 10) >= ? AND valor >= 0), 0) as consumo_semana,
-            COALESCE((SELECT SUM(valor) FROM pesos WHERE substr(data, 1, 10) >= ? AND valor >= 0), 0) as consumo_mes,
-            COALESCE((SELECT COUNT(*) FROM pesos WHERE valor >= 0), 0) as total_leituras,
-            COALESCE((SELECT valor FROM pesos WHERE valor >= 0 ORDER BY id DESC LIMIT 1), 0) as ultimo_peso,
-            (SELECT data FROM pesos WHERE valor >= 0 ORDER BY id DESC LIMIT 1) as ultima_atualizacao
-    `, [hoje, dataLimite7Str, dataLimite30Str], (err, row) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(row);
-    });
-});
-
-// 📈 Estatísticas
-app.get("/estatisticas", (req, res) => {
-    db.get(`
-        SELECT
-            COALESCE(MIN(valor), 0) as peso_minimo,
-            COALESCE(MAX(valor), 0) as peso_maximo,
-            COALESCE(AVG(valor), 0) as peso_medio,
-            COUNT(*) as total_leituras,
-            SUM(CASE WHEN valor < 0.1 THEN 1 ELSE 0 END) as leituras_vazio,
-            SUM(CASE WHEN valor > 1 THEN 1 ELSE 0 END) as leituras_acima_1kg
-        FROM pesos
-        WHERE valor >= 0
-    `, [], (err, row) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-        res.json(row);
-    });
-});
-
-// ⚙️ Configurações
-app.get("/config", (req, res) => {
-    db.all("SELECT * FROM config", [], (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        const config = {};
-        rows.forEach(row => {
-            config[row.chave] = row.valor;
-        });
-        res.json(config);
-    });
-});
-
-app.put("/config/:chave", (req, res) => {
-    const { chave } = req.params;
-    const { valor } = req.body;
-    const agora = formatarDataHoraSQL(getDataHoraBrasil());
-
-    db.run(
-        "INSERT OR REPLACE INTO config (chave, valor, data_atualizacao) VALUES (?, ?, ?)",
-        [chave, valor, agora],
-        function(err) {
-            if (err) {
-                res.status(500).json({ error: err.message });
-                return;
-            }
-            res.json({ status: "ok", chave, valor });
-        }
-    );
-});
-
-// 🗑️ Limpar dados antigos
-app.delete("/dados/limpar", (req, res) => {
-    const { dias = 30 } = req.query;
-    const dataLimite = new Date(getDataHoraBrasil());
-    dataLimite.setDate(dataLimite.getDate() - dias);
-    const dataLimiteStr = formatarDataHoraSQL(dataLimite);
-
-    db.run(
-        "DELETE FROM pesos WHERE data < ? AND valor >= 0",
-        [dataLimiteStr],
-        function(err) {
-            if (err) {
-                res.status(500).json({ error: err.message });
-                return;
-            }
-            res.json({
-                status: "ok",
-                registros_removidos: this.changes,
-                mensagem: `Removidos registros com mais de ${dias} dias`
-            });
-        }
-    );
-});
-
-// 📤 Exportar CSV
-app.get("/exportar/csv", (req, res) => {
-    db.all("SELECT id, valor, data FROM pesos WHERE valor >= 0 ORDER BY id DESC", [], (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-
-        let csv = "id,peso_kg,data_hora\n";
-        rows.forEach(row => {
-            csv += `${row.id},${row.valor},${row.data}\n`;
-        });
-
-        res.header("Content-Type", "text/csv");
-        res.attachment(`petflow_dados_${formatarDataHoraSQL(getDataHoraBrasil()).replace(/[-\s:]/g, '-')}.csv`);
-        res.send(csv);
-    });
-});
-
-// 📤 Exportar JSON
-app.get("/exportar/json", (req, res) => {
-    db.all("SELECT * FROM pesos WHERE valor >= 0 ORDER BY id DESC", [], (err, rows) => {
-        if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-        }
-
-        res.json({
-            exportado_em: formatarDataHoraExibicao(getDataHoraBrasil()),
-            total_registros: rows.length,
-            dados: rows
-        });
-    });
-});
-
-// 🔔 Verificar alertas
-app.get("/alertas/verificar", (req, res) => {
+app.get("/alertas/verificar", autenticarToken, (req, res) => {
+    const usuario_id = req.usuario.id;
     const dataLimite = new Date(getDataHoraBrasil());
     dataLimite.setHours(dataLimite.getHours() - 8);
     const dataLimiteStr = formatarDataHoraSQL(dataLimite);
 
     db.get(`
-        SELECT 
+        SELECT
             MAX(data) as ultima_vez,
             MAX(CASE WHEN valor > 0.05 THEN data ELSE NULL END) as ultimo_consumo
-        FROM pesos 
-        WHERE valor >= 0 AND data >= ?
-    `, [dataLimiteStr], (err, row) => {
+        FROM pesos
+        WHERE usuario_id = ? AND valor >= 0 AND data >= ?
+    `, [usuario_id, dataLimiteStr], (err, row) => {
         if (err) {
             res.status(500).json({ error: err.message });
             return;
@@ -538,67 +395,46 @@ app.get("/alertas/verificar", (req, res) => {
             alerta: alertaAtivo,
             ultimo_consumo: row?.ultimo_consumo || null,
             ultima_leitura: row?.ultima_vez || null,
-            mensagem: alertaAtivo ? "⚠️ Pet pode não estar se alimentando há mais de 8 horas!" : "✅ Pet está se alimentando normalmente"
+            mensagem: alertaAtivo ? "⚠️ Seu pet pode não estar se alimentando há mais de 8 horas!" : "✅ Seu pet está se alimentando normalmente"
         });
     });
 });
 
-// 🔍 Debug
-app.get("/admin/consultar", (req, res) => {
-    db.get("SELECT COUNT(*) as total FROM pesos", [], (err, count) => {
-        if (err) {
-            return res.status(500).json({ erro: err.message });
-        }
+// ============================================================
+// ROTAS DE PÁGINAS (frontend separado)
+// ============================================================
 
-        db.all("SELECT * FROM pesos ORDER BY id DESC LIMIT 20", [], (err, rows) => {
-            if (err) {
-                return res.status(500).json({ erro: err.message });
-            }
-
-            res.json({
-                fuso_horario: "America/Sao_Paulo (UTC-3)",
-                horario_servidor: formatarDataHoraExibicao(getDataHoraBrasil()),
-                total_registros: count.total,
-                ultimos_registros: rows
-            });
-        });
-    });
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'login.html'));
 });
 
-// Rota para documentação da API
-app.get("/api", (req, res) => {
+app.get('/cadastro', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'cadastro.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'dashboard.html'));
+});
+
+app.get('/api', (req, res) => {
     res.json({
         nome: "PetFlow API",
-        versao: "2.0.0",
+        versao: "3.0.0",
         fuso_horario: "America/Sao_Paulo (UTC-3)",
         horario_servidor: formatarDataHoraExibicao(getDataHoraBrasil()),
         endpoints: {
-            "POST /peso": "Enviar peso",
-            "GET /pesos": "Histórico",
-            "GET /dashboard": "Resumo",
-            "GET /estatisticas": "Estatísticas",
-            "GET /exportar/csv": "Exportar CSV",
-            "GET /admin/consultar": "Debug"
+            "POST /api/cadastrar": "Cadastro de usuário",
+            "POST /api/login": "Login de usuário",
+            "POST /peso": "Enviar peso (requer token)",
+            "GET /pesos": "Listar pesos (requer token)",
+            "GET /alertas/verificar": "Verificar alertas (requer token)"
         }
     });
 });
 
-// ============================================================
-// MANUTENÇÃO AUTOMÁTICA
-// ============================================================
-
-// Limpar dados com mais de 60 dias
-setInterval(() => {
-    const dataLimite = new Date(getDataHoraBrasil());
-    dataLimite.setDate(dataLimite.getDate() - 60);
-    const dataLimiteStr = formatarDataHoraSQL(dataLimite);
-
-    db.run("DELETE FROM pesos WHERE data < ?", [dataLimiteStr], function(err) {
-        if (!err && this.changes > 0) {
-            console.log(`🧹 Limpeza automática: ${this.changes} registros antigos removidos`);
-        }
-    });
-}, 24 * 60 * 60 * 1000);
+app.get('/', (req, res) => {
+    res.redirect('/login');
+});
 
 // ============================================================
 // INICIAR SERVIDOR
@@ -621,10 +457,14 @@ function getLocalIp() {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log("\n========================================");
-    console.log("🚀 PetFlow Backend v2.0");
+    console.log("🚀 PetFlow Backend v3.0 - Com Autenticação");
     console.log("========================================");
     console.log(`🕐 Horário do servidor: ${formatarDataHoraExibicao(getDataHoraBrasil())}`);
-    console.log(`📡 Dashboard: http://${getLocalIp()}:${PORT}`);
-    console.log(`🔗 API: http://${getLocalIp()}:${PORT}/api`);
+    console.log(`📡 Servidor: http://${getLocalIp()}:${PORT}`);
+    console.log(`🔐 Login: http://${getLocalIp()}:${PORT}/login`);
+    console.log(`📝 Cadastro: http://${getLocalIp()}:${PORT}/cadastro`);
+    console.log(`📊 Dashboard: http://${getLocalIp()}:${PORT}/dashboard`);
+    console.log("========================================");
+    console.log(`📁 Frontend: ${frontendPath}`);
     console.log("========================================\n");
 });
