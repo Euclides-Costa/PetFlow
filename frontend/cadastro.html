@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PetFlow - Cadastro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0a2b1e 0%, #0d3d28 50%, #0a2b1e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .register-card {
+            background: linear-gradient(145deg, #0f3528, #0b2c20);
+            border-radius: 32px;
+            padding: 2rem;
+            border: 1px solid rgba(46,204,113,0.3);
+            box-shadow: 0 25px 45px rgba(0,0,0,0.3);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .logo-icon {
+            font-size: 2.5rem;
+            background: #2ecc71;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            color: #fff;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(46,204,113,0.3);
+            border-radius: 10px;
+            color: #e0e7e0;
+            font-size: 0.9rem;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #2ecc71;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .btn-register {
+            width: 100%;
+            background: #2ecc71;
+            border: none;
+            padding: 12px;
+            border-radius: 12px;
+            color: #0a2b1e;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+
+        .btn-register:hover {
+            background: #27ae60;
+        }
+
+        .btn-clear {
+            width: 100%;
+            background: rgba(231,76,60,0.2);
+            border: 1px solid #e74c3c;
+            border-radius: 12px;
+            padding: 10px;
+            color: #e74c3c;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+
+        .btn-clear:hover {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .login-link {
+            text-align: center;
+            margin-top: 1rem;
+            color: #7f8c8d;
+            font-size: 0.85rem;
+        }
+
+        .login-link a {
+            color: #2ecc71;
+            text-decoration: none;
+        }
+
+        .error-message {
+            background: rgba(231,76,60,0.2);
+            border: 1px solid #e74c3c;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 1rem;
+            color: #e74c3c;
+            font-size: 0.8rem;
+            display: none;
+        }
+
+        .success-message {
+            background: rgba(46,204,113,0.2);
+            border: 1px solid #2ecc71;
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 1rem;
+            color: #2ecc71;
+            font-size: 0.8rem;
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(46,204,113,0.3);
+            border-top-color: #2ecc71;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: rgba(46,204,113,0.1);
+            border: 1px solid rgba(46,204,113,0.3);
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 1rem;
+            font-size: 0.75rem;
+            text-align: center;
+            color: #a0c4b0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="register-card">
+        <div class="logo">
+            <div class="logo-icon">🐾</div>
+            <h1>Criar Conta</h1>
+        </div>
+
+        <div id="infoBox" class="info-box" style="display: none;"></div>
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+        </div>
+
+        <form id="registerForm">
+            <div class="form-group">
+                <label>👤 Nome do Tutor *</label>
+                <input type="text" id="nome" required placeholder="Seu nome completo">
+            </div>
+
+            <div class="form-group">
+                <label>📧 Email *</label>
+                <input type="email" id="email" required placeholder="seu@email.com">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>🔒 Senha *</label>
+                    <input type="password" id="senha" required placeholder="Mínimo 6 caracteres">
+                </div>
+                <div class="form-group">
+                    <label>🔒 Confirmar Senha *</label>
+                    <input type="password" id="confirmarSenha" required placeholder="Digite novamente">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>🐕 Raça do Animal</label>
+                    <input type="text" id="racaAnimal" placeholder="Ex: Labrador, SRD...">
+                </div>
+                <div class="form-group">
+                    <label>🍖 Nome da Ração</label>
+                    <input type="text" id="nomeRacao" placeholder="Ex: Premier, GranPlus...">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-register">Criar Conta</button>
+        </form>
+
+
+        <div class="login-link">
+            Já tem uma conta? <a href="/login">Faça login</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_URL = window.location.origin;
+    //const API_URL = "172.20.10.2:3000";
+
+    // Mostrar se já está logado (apenas informativo)
+    const token = localStorage.getItem('token');
+    const usuario = JSON.parse(localStorage.getItem('usuario') || '{}');
+
+    if (token && usuario.nome) {
+        const infoBox = document.getElementById('infoBox');
+        infoBox.style.display = 'block';
+        infoBox.innerHTML = `🔐 Você está logado como <strong>${usuario.nome}</strong>. <a href="/dashboard" style="color:#2ecc71;">Clique aqui</a> para ir ao Dashboard ou faça logout abaixo.`;
+    }
+
+    // Botão para limpar sessão
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const nome = document.getElementById('nome').value;
+        const email = document.getElementById('email').value;
+        const senha = document.getElementById('senha').value;
+        const confirmarSenha = document.getElementById('confirmarSenha').value;
+        const raca_animal = document.getElementById('racaAnimal').value;
+        const nome_racao = document.getElementById('nomeRacao').value;
+
+        document.getElementById('errorMessage').style.display = 'none';
+        document.getElementById('successMessage').style.display = 'none';
+        document.getElementById('loading').style.display = 'block';
+
+        if (senha !== confirmarSenha) {
+            document.getElementById('errorMessage').style.display = 'block';
+            document.getElementById('errorMessage').innerHTML = '❌ As senhas não coincidem';
+            document.getElementById('loading').style.display = 'none';
+            return;
+        }
+
+        if (senha.length < 6) {
+            document.getElementById('errorMessage').style.display = 'block';
+            document.getElementById('errorMessage').innerHTML = '❌ A senha deve ter no mínimo 6 caracteres';
+            document.getElementById('loading').style.display = 'none';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/cadastrar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nome, email, senha, confirmarSenha,
+                    raca_animal, nome_racao
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('usuario', JSON.stringify(data.usuario));
+
+                document.getElementById('successMessage').style.display = 'block';
+                document.getElementById('successMessage').innerHTML = '✅ Cadastro realizado! Redirecionando...';
+
+                setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 1500);
+            } else {
+                document.getElementById('errorMessage').style.display = 'block';
+                document.getElementById('errorMessage').innerHTML = '❌ ' + (data.error || 'Erro ao cadastrar');
+            }
+        } catch (error) {
+            document.getElementById('errorMessage').style.display = 'block';
+            document.getElementById('errorMessage').innerHTML = '❌ Erro de conexão com o servidor';
+        } finally {
+            document.getElementById('loading').style.display = 'none';
+        }
+    });
+</script>
+</body>
+</html>

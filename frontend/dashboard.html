@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PetFlow - Dashboard Inteligente</title>
+    <title>PetFlow - Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -60,6 +60,35 @@
         .logo p {
             font-size: 0.75rem;
             color: #a0c4b0;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-name {
+            background: rgba(0,0,0,0.4);
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+        }
+
+        .btn-logout {
+            background: rgba(231,76,60,0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            padding: 8px 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-logout:hover {
+            background: #e74c3c;
+            color: white;
         }
 
         .status-card {
@@ -308,6 +337,22 @@
             color: white;
         }
 
+        .btn-refresh {
+            background: rgba(46,204,113,0.2);
+            border: 1px solid #2ecc71;
+            color: #2ecc71;
+            padding: 8px 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-refresh:hover {
+            background: #2ecc71;
+            color: #0a2b1e;
+        }
+
         .history-table-container {
             overflow-x: auto;
             border-radius: 20px;
@@ -338,6 +383,27 @@
             background: rgba(46,204,113,0.1);
         }
 
+        .alert-banner {
+            background: linear-gradient(135deg, #e67e22, #d35400);
+            border-radius: 20px;
+            padding: 15px 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 2rem;
+            display: none;
+        }
+
+        .alert-banner.show {
+            display: flex;
+            animation: slideDown 0.4s ease;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+
         footer {
             text-align: center;
             padding: 2rem;
@@ -349,6 +415,7 @@
             .container { padding: 1rem; }
             .kpi-value { font-size: 1.8rem; }
             .chart-container { height: 250px; }
+            .header { flex-direction: column; text-align: center; }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -363,14 +430,23 @@
             <p>Monitoramento inteligente de alimentação</p>
         </div>
     </div>
-    <div class="status-card">
-        <div class="status-led"></div>
-        <span>🟢 Sistema ativo</span>
-        <span>📡 Dados em tempo real</span>
+    <div class="user-info">
+        <div class="status-card">
+            <div class="status-led"></div>
+            <span>🟢 Online</span>
+        </div>
+        <div class="user-name" id="userNameDisplay">Carregando...</div>
+        <button class="btn-logout" id="logoutBtn">🚪 Sair</button>
     </div>
 </div>
 
 <div class="container">
+    <!-- Alerta -->
+    <div id="alertBox" class="alert-banner">
+        ⚠️ <strong>ALERTA:</strong> <span id="alertMsg">Seu pet pode não estar se alimentando há mais de 8 horas!</span>
+    </div>
+
+    <!-- Filtros -->
     <div class="filters-section">
         <div class="filters-title">
             <span>📅</span> Filtros Personalizados
@@ -401,6 +477,7 @@
         </div>
     </div>
 
+    <!-- KPIs -->
     <div class="kpi-grid">
         <div class="kpi-card">
             <div class="kpi-title">🍖 Consumo Total</div>
@@ -434,6 +511,7 @@
         </div>
     </div>
 
+    <!-- Gráfico -->
     <div class="chart-section">
         <div class="chart-header">
             <h3>📊 Consumo Diário</h3>
@@ -448,6 +526,7 @@
         </div>
     </div>
 
+    <!-- Histórico -->
     <div class="history-section">
         <div class="history-header">
             <h3>📋 Histórico de Medições</h3>
@@ -467,7 +546,7 @@
                 </tr>
                 </thead>
                 <tbody id="historyBody">
-                <tr><td colspan="3" style="text-align:center;">Carregando......</td></tr>
+                <tr><td colspan="3" style="text-align:center;">Carregando...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -478,15 +557,70 @@
 </footer>
 
 <script>
-    const API_URL = "http://192.168.0.5:3000";
+    // ============================================================
+    // CONFIGURAÇÃO
+    // ============================================================
+    const API_URL = window.location.origin;
+    //const API_URL = "172.20.10.2:3000";
+
+
     let consumoChart = null;
     let dadosFiltrados = [];
     let dadosCompletos = [];
 
+    // ============================================================
+    // AUTENTICAÇÃO
+    // ============================================================
+    const token = localStorage.getItem('token');
+    const usuario = JSON.parse(localStorage.getItem('usuario') || '{}');
+
+    if (!token) {
+        window.location.href = '/login';
+    }
+
+    // Verificar se o token é válido
+    fetch(`${API_URL}/api/verificar`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+    }).then(response => {
+        if (!response.ok) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('usuario');
+            window.location.href = '/login';
+        }
+    }).catch(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('usuario');
+        window.location.href = '/login';
+    });
+
+    if (usuario.nome) {
+        document.getElementById('userNameDisplay').innerHTML = `👋 Olá, ${usuario.nome.split(' ')[0]}`;
+    } else {
+        document.getElementById('userNameDisplay').innerHTML = `👤 Usuário`;
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('usuario');
+        window.location.href = '/login';
+    });
+
+    function getHeaders() {
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        };
+    }
+
+    // ============================================================
+    // INICIALIZAÇÃO
+    // ============================================================
     document.addEventListener('DOMContentLoaded', () => {
         iniciarDatasPadrao();
         carregarTodosDados();
         iniciarPollingPeso();
+        iniciarVerificacaoAlertas();
         setupEventListeners();
         initChart();
     });
@@ -520,13 +654,20 @@
 
     async function carregarTodosDados() {
         try {
-            const response = await fetch(`${API_URL}/pesos?limite=5000`);
+            const response = await fetch(`${API_URL}/pesos?limite=5000`, { headers: getHeaders() });
+            if (response.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+                return;
+            }
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             dadosCompletos = await response.json();
             dadosCompletos = dadosCompletos.filter(item => item.valor >= 0);
             dadosCompletos.sort((a, b) => new Date(a.data) - new Date(b.data));
             aplicarFiltros();
         } catch (error) {
             console.error("Erro ao carregar:", error);
+            document.getElementById('historyBody').innerHTML = '<tr><td colspan="3" style="text-align:center; color:#e74c3c;">❌ Erro ao conectar com o servidor</td></tr>';
         }
     }
 
@@ -565,7 +706,6 @@
             return;
         }
 
-        // Calcular consumo total (soma de TODAS as reduções de peso)
         let consumoTotal = 0;
         let consumoDiario = {};
         let pesoAnterior = dadosFiltrados[0].valor;
@@ -576,7 +716,6 @@
 
             if (diferenca > 0.001) {
                 consumoTotal += diferenca;
-
                 const data = new Date(dadosFiltrados[i].data).toLocaleDateString('pt-BR');
                 if (!consumoDiario[data]) consumoDiario[data] = 0;
                 consumoDiario[data] += diferenca;
@@ -608,8 +747,6 @@
         document.getElementById('dataMinConsumo').innerHTML = dataMinimo || '-';
         document.getElementById('totalDias').innerHTML = diasPeriodo + '<span class="kpi-unit"> dias</span>';
         document.getElementById('leiturasCount').innerHTML = dadosFiltrados.length + ' leituras';
-
-        console.log('📊 Consumo total:', consumoTotal.toFixed(2), 'kg | Dias:', diasPeriodo);
     }
 
     function initChart() {
@@ -729,7 +866,9 @@
     async function iniciarPollingPeso() {
         setInterval(async () => {
             try {
-                const response = await fetch(`${API_URL}/pesos?limite=1`);
+                const response = await fetch(`${API_URL}/pesos?limite=1`, { headers: getHeaders() });
+                if (response.status === 401) return;
+                if (!response.ok) return;
                 const dados = await response.json();
                 if (dados && dados.length > 0) {
                     const ultimo = dados[0];
@@ -740,6 +879,30 @@
                 console.warn("Erro ao buscar peso:", error);
             }
         }, 5000);
+    }
+
+    async function verificarAlertas() {
+        try {
+            const response = await fetch(`${API_URL}/alertas/verificar`, { headers: getHeaders() });
+            if (response.status === 401) return;
+            if (!response.ok) return;
+            const data = await response.json();
+
+            const alertBox = document.getElementById('alertBox');
+            if (data.alerta) {
+                alertBox.classList.add('show');
+                document.getElementById('alertMsg').innerHTML = data.mensagem;
+            } else {
+                alertBox.classList.remove('show');
+            }
+        } catch (error) {
+            console.warn("Erro ao verificar alertas:", error);
+        }
+    }
+
+    function iniciarVerificacaoAlertas() {
+        verificarAlertas();
+        setInterval(verificarAlertas, 60000);
     }
 </script>
 </body>
