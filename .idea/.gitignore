@@ -8,3 +8,7 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+
+#ignored the files env and node_modules
+backend/node_modules/
+backend/.env
