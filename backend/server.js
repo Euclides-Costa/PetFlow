@@ -261,77 +261,385 @@ app.get('/api/ai/historico', autenticarToken, (req,res)=>{
 });
 
 // ── CHAT ──────────────────────────────────────────────────────
-app.get('/api/chat/historico', autenticarToken, (req,res)=>{
-    db.all(`SELECT id,role,conteudo,data FROM chat_mensagens WHERE usuario_id=? ORDER BY id ASC`,[req.usuario.id],(e,r)=>{if(e)return res.status(500).json({error:e.message});res.json(r);});
+app.get('/api/chat/historico', autenticarToken, (req, res) => {
+    db.all(
+        `SELECT id, role, conteudo, data FROM chat_mensagens WHERE usuario_id = ? ORDER BY id ASC`,
+        [req.usuario.id],
+        (e, r) => { if (e) return res.status(500).json({ error: e.message }); res.json(r); }
+    );
 });
 
-app.delete('/api/chat/historico', autenticarToken, (req,res)=>{
-    db.run(`DELETE FROM chat_mensagens WHERE usuario_id=?`,[req.usuario.id],(e)=>{if(e)return res.status(500).json({error:e.message});res.json({success:true});});
+app.delete('/api/chat/historico', autenticarToken, (req, res) => {
+    db.run(`DELETE FROM chat_mensagens WHERE usuario_id = ?`, [req.usuario.id], (e) => {
+        if (e) return res.status(500).json({ error: e.message });
+        res.json({ success: true });
+    });
 });
 
-app.post('/api/chat/mensagem', autenticarToken, async (req,res)=>{
-    const uid=req.usuario.id;const{mensagem}=req.body;
-    if(!mensagem?.trim())return res.status(400).json({error:"Mensagem vazia."});
-    try{
-        const info=await new Promise(r=>db.get("SELECT nome,raca_animal,nome_racao FROM usuarios WHERE id=?",[uid],(e,row)=>r(row||{})));
-        const lim=new Date(getDataHoraBrasil());lim.setDate(lim.getDate()-30);
-        const dados=await new Promise(r=>db.all(`SELECT valor,data FROM pesos WHERE usuario_id=? AND valor>=0 AND data>=? ORDER BY data ASC`,[uid,formatarDataHoraSQL(lim)],(e,r2)=>r(r2||[])));
-        let ctx="Sem dados suficientes ainda.";
-        if(dados.length>=5){
-            const m=montarMetricas(dados);
-            const tend={crescente:'📈 crescente',decrescente:'📉 decrescente',estavel:'➡️ estável',insuficiente:'indefinida'}[m.tendencia]||m.tendencia;
-            ctx=`- Peso atual no pote: ${m.peso_atual} kg\n- Consumo 24h: ${m.consumo_ultimas_24h} kg\n- Média 7d: ${m.media_7d} kg/dia\n- Média 30d: ${m.media_30d} kg/dia\n- Tendência: ${tend}\n- Variação (7d vs 30d): ${m.variacao_percentual_7d_vs_30d>0?'+':''}${m.variacao_percentual_7d_vs_30d}%\n- Previsão de acabamento: ${m.previsao_acabamento_dias??'?'} dias\n- Horário de pico: ${m.horario_pico?`${m.horario_pico.hora}h (${m.horario_pico.percentual}%)`:'indefinido'}\n- Pote tombado: ${m.pote_tombado?'SIM ⚠️':'não'}\n- Leituras (30d): ${m.total_leituras}`;
+// ── PARSER DE INTENÇÃO ────────────────────────────────────────
+// Detecta o tipo de pergunta e resolve datas/períodos mencionados
+
+function detectarIntencao(texto) {
+    const t = texto.toLowerCase();
+    const intencao = {
+        tipo: 'geral',       // geral | consumo_periodo | consumo_hoje | consumo_semana | horario_pico | previsao | peso_atual | comparativo
+        dataInicio: null,
+        dataFim: null,
+        descricaoPeriodo: null
+    };
+
+    const agora = getDataHoraBrasil();
+
+    // ── Detectar mês nomeado (ex: "abril", "março de 2025")
+    const meses = { janeiro:0, fevereiro:1, março:2, marco:2, abril:3, maio:4, junho:5,
+                    julho:6, agosto:7, setembro:8, outubro:9, novembro:10, dezembro:11 };
+    for (const [nome, num] of Object.entries(meses)) {
+        if (t.includes(nome)) {
+            const anoMatch = t.match(/\b(20\d{2})\b/);
+            const ano = anoMatch ? parseInt(anoMatch[1]) : agora.getFullYear();
+            const inicio = new Date(ano, num, 1, 0, 0, 0);
+            const fim = new Date(ano, num + 1, 0, 23, 59, 59);
+            // Se o mês inferido está no futuro, assume ano anterior
+            if (inicio > agora && !anoMatch) {
+                inicio.setFullYear(ano - 1);
+                fim.setFullYear(ano - 1);
+            }
+            intencao.tipo = 'consumo_periodo';
+            intencao.dataInicio = inicio;
+            intencao.dataFim = fim;
+            intencao.descricaoPeriodo = `${nome.charAt(0).toUpperCase() + nome.slice(1)} de ${inicio.getFullYear()}`;
+            return intencao;
         }
-        const systemPrompt=`Você é o PetFlow AI, assistente veterinário de monitoramento de alimentação de pets.
+    }
+
+    // ── "últimos N dias/semanas"
+    const matchDias = t.match(/[uú]ltimos?\s+(\d+)\s+dias?/);
+    const matchSemanas = t.match(/[uú]ltimas?\s+(\d+)\s+semanas?/);
+    if (matchDias) {
+        const n = parseInt(matchDias[1]);
+        const inicio = new Date(agora); inicio.setDate(inicio.getDate() - n); inicio.setHours(0,0,0,0);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = inicio;
+        intencao.dataFim = new Date(agora);
+        intencao.descricaoPeriodo = `últimos ${n} dias`;
+        return intencao;
+    }
+    if (matchSemanas) {
+        const n = parseInt(matchSemanas[1]);
+        const inicio = new Date(agora); inicio.setDate(inicio.getDate() - n * 7); inicio.setHours(0,0,0,0);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = inicio;
+        intencao.dataFim = new Date(agora);
+        intencao.descricaoPeriodo = `últimas ${n} semana(s)`;
+        return intencao;
+    }
+
+    // ── "essa semana" / "esta semana"
+    if (t.match(/essa\s+semana|esta\s+semana/)) {
+        const inicio = new Date(agora);
+        inicio.setDate(agora.getDate() - agora.getDay()); inicio.setHours(0,0,0,0);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = inicio;
+        intencao.dataFim = new Date(agora);
+        intencao.descricaoPeriodo = 'esta semana';
+        return intencao;
+    }
+
+    // ── "semana passada"
+    if (t.match(/semana\s+passada|semana\s+anterior/)) {
+        const fimSem = new Date(agora);
+        fimSem.setDate(agora.getDate() - agora.getDay() - 1); fimSem.setHours(23,59,59);
+        const inicioSem = new Date(fimSem);
+        inicioSem.setDate(fimSem.getDate() - 6); inicioSem.setHours(0,0,0,0);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = inicioSem;
+        intencao.dataFim = fimSem;
+        intencao.descricaoPeriodo = 'semana passada';
+        return intencao;
+    }
+
+    // ── "mês passado" / "mês anterior"
+    if (t.match(/m[eê]s\s+passado|m[eê]s\s+anterior/)) {
+        const mesPassado = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
+        const fimMes = new Date(agora.getFullYear(), agora.getMonth(), 0, 23, 59, 59);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = mesPassado;
+        intencao.dataFim = fimMes;
+        intencao.descricaoPeriodo = 'mês passado';
+        return intencao;
+    }
+
+    // ── "hoje"
+    if (t.includes('hoje')) {
+        const inicio = new Date(agora); inicio.setHours(0,0,0,0);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = inicio;
+        intencao.dataFim = new Date(agora);
+        intencao.descricaoPeriodo = 'hoje';
+        return intencao;
+    }
+
+    // ── "ontem"
+    if (t.includes('ontem')) {
+        const ontem = new Date(agora); ontem.setDate(ontem.getDate() - 1);
+        const inicio = new Date(ontem); inicio.setHours(0,0,0,0);
+        const fim = new Date(ontem); fim.setHours(23,59,59);
+        intencao.tipo = 'consumo_periodo';
+        intencao.dataInicio = inicio;
+        intencao.dataFim = fim;
+        intencao.descricaoPeriodo = 'ontem';
+        return intencao;
+    }
+
+    // ── Outros tipos específicos (sem período definido — usa dados gerais)
+    if (t.match(/hor[aá]rio|quando\s+come|quando\s+costuma|pico/))
+        { intencao.tipo = 'horario_pico'; return intencao; }
+    if (t.match(/acab|durar|prever|previs|comprar|repor|estoque/))
+        { intencao.tipo = 'previsao'; return intencao; }
+    if (t.match(/peso\s+atual|quanto\s+tem|quanto\s+resta|pote\s+agora/))
+        { intencao.tipo = 'peso_atual'; return intencao; }
+    if (t.match(/compar|diferença|variou|variação|mudou|aument|diminu|caiu|subiu/))
+        { intencao.tipo = 'comparativo'; return intencao; }
+
+    return intencao; // tipo = 'geral'
+}
+
+// ── BUSCA DE DADOS PRECISA POR PERÍODO ───────────────────────
+async function buscarDadosPrecisosParaChat(uid, intencao) {
+    // Se a intenção tem um período definido, busca exatamente esse período
+    if (intencao.dataInicio && intencao.dataFim) {
+        const rows = await new Promise(r =>
+            db.all(
+                `SELECT valor, data FROM pesos WHERE usuario_id = ? AND valor >= 0 AND data >= ? AND data <= ? ORDER BY data ASC`,
+                [uid, formatarDataHoraSQL(intencao.dataInicio), formatarDataHoraSQL(intencao.dataFim)],
+                (e, rs) => r(rs || [])
+            )
+        );
+
+        if (rows.length < 2) return { periodo: intencao.descricaoPeriodo, semDados: true };
+
+        // Calcular consumo real do período (soma de todas as quedas de peso)
+        let consumoTotal = 0;
+        const consumoPorDia = {};
+        for (let i = 1; i < rows.length; i++) {
+            const diff = rows[i-1].valor - rows[i].valor;
+            if (diff > 0.005) {
+                consumoTotal += diff;
+                const dia = rows[i].data.slice(0, 10);
+                consumoPorDia[dia] = (consumoPorDia[dia] || 0) + diff;
+            }
+        }
+
+        const diasComDados = Object.keys(consumoPorDia).length;
+        const mediaDiaria = diasComDados > 0 ? consumoTotal / diasComDados : 0;
+
+        // Maior e menor dia
+        let maiorDia = null, maiorVal = 0, menorDia = null, menorVal = Infinity;
+        for (const [dia, val] of Object.entries(consumoPorDia)) {
+            if (val > maiorVal) { maiorVal = val; maiorDia = dia; }
+            if (val < menorVal) { menorVal = val; menorDia = dia; }
+        }
+
+        // Horário de pico no período
+        const porHora = new Array(24).fill(0);
+        for (let i = 1; i < rows.length; i++) {
+            const diff = rows[i-1].valor - rows[i].valor;
+            if (diff > 0.005) porHora[new Date(rows[i].data).getHours()] += diff;
+        }
+        const maxHoraVal = Math.max(...porHora);
+        const horaPico = maxHoraVal > 0 ? porHora.indexOf(maxHoraVal) : null;
+        const totalHoras = porHora.reduce((a,b) => a+b, 0);
+        const picoPct = totalHoras > 0 && horaPico !== null ? ((maxHoraVal/totalHoras)*100).toFixed(0) : null;
+
+        return {
+            periodo: intencao.descricaoPeriodo,
+            consumoTotal: parseFloat(consumoTotal.toFixed(3)),
+            mediaDiaria: parseFloat(mediaDiaria.toFixed(3)),
+            diasComDados,
+            totalLeituras: rows.length,
+            maiorConsumo: maiorDia ? { data: maiorDia, valor: parseFloat(maiorVal.toFixed(3)) } : null,
+            menorConsumo: menorDia ? { data: menorDia, valor: parseFloat(menorVal.toFixed(3)) } : null,
+            horarioPico: horaPico !== null ? { hora: horaPico, percentual: picoPct } : null,
+            pesoInicio: parseFloat(rows[0].valor.toFixed(3)),
+            pesoFim: parseFloat(rows[rows.length-1].valor.toFixed(3)),
+            semDados: false
+        };
+    }
+
+    // Sem período definido — retorna métricas gerais dos últimos 30 dias
+    const lim = new Date(getDataHoraBrasil()); lim.setDate(lim.getDate() - 30);
+    const rows = await new Promise(r =>
+        db.all(`SELECT valor, data FROM pesos WHERE usuario_id = ? AND valor >= 0 AND data >= ? ORDER BY data ASC`,
+            [uid, formatarDataHoraSQL(lim)], (e, rs) => r(rs || []))
+    );
+    if (rows.length < 5) return { semDados: true };
+    return { metricas: montarMetricas(rows), semDados: false };
+}
+
+// ── MONTAR CONTEXTO PRECISO PARA O SYSTEM PROMPT ─────────────
+function montarContextoPreciso(dadosBuscados, intencao) {
+    if (dadosBuscados.semDados) {
+        return `Não há dados suficientes para o período solicitado (${dadosBuscados.periodo || 'geral'}).`;
+    }
+
+    // Período específico
+    if (dadosBuscados.consumoTotal !== undefined) {
+        const d = dadosBuscados;
+        let ctx = `DADOS REAIS DO BANCO — Período: ${d.periodo}\n`;
+        ctx += `- Consumo total: ${d.consumoTotal} kg\n`;
+        ctx += `- Média diária: ${d.mediaDiaria} kg/dia\n`;
+        ctx += `- Dias com registro de consumo: ${d.diasComDados}\n`;
+        ctx += `- Total de leituras do sensor: ${d.totalLeituras}\n`;
+        if (d.maiorConsumo) ctx += `- Maior consumo: ${d.maiorConsumo.valor} kg (dia ${d.maiorConsumo.data})\n`;
+        if (d.menorConsumo) ctx += `- Menor consumo: ${d.menorConsumo.valor} kg (dia ${d.menorConsumo.data})\n`;
+        if (d.horarioPico) ctx += `- Horário de pico no período: ${d.horarioPico.hora}h (${d.horarioPico.percentual}% do consumo)\n`;
+        ctx += `- Peso no pote no início do período: ${d.pesoInicio} kg\n`;
+        ctx += `- Peso no pote no final do período: ${d.pesoFim} kg\n`;
+        ctx += `\nIMPORTANTE: Use EXATAMENTE esses números na resposta. Não estime nem calcule por conta própria.`;
+        return ctx;
+    }
+
+    // Dados gerais (métricas dos últimos 30 dias)
+    if (dadosBuscados.metricas) {
+        const m = dadosBuscados.metricas;
+        const tend = { crescente:'📈 crescente', decrescente:'📉 decrescente', estavel:'➡️ estável', insuficiente:'indefinida' }[m.tendencia] || m.tendencia;
+        return `DADOS REAIS DO BANCO — Últimos 30 dias
+- Peso atual no pote: ${m.peso_atual} kg
+- Consumo últimas 24h: ${m.consumo_ultimas_24h} kg
+- Média últimos 7 dias: ${m.media_7d} kg/dia
+- Média últimos 14 dias: ${m.media_14d} kg/dia
+- Média últimos 30 dias: ${m.media_30d} kg/dia
+- Tendência: ${tend}
+- Variação (7d vs 30d): ${m.variacao_percentual_7d_vs_30d > 0 ? '+' : ''}${m.variacao_percentual_7d_vs_30d}%
+- Previsão de acabamento: ${m.previsao_acabamento_dias ?? '?'} dias
+- Horário de pico: ${m.horario_pico ? `${m.horario_pico.hora}h (${m.horario_pico.percentual}%)` : 'indefinido'}
+- Pote tombado: ${m.pote_tombado ? 'SIM ⚠️' : 'não'}
+- Total de leituras (30d): ${m.total_leituras}
+
+IMPORTANTE: Use EXATAMENTE esses números na resposta. Não estime nem calcule por conta própria.`;
+    }
+
+    return 'Dados indisponíveis.';
+}
+
+// ── FALLBACK SEM API ──────────────────────────────────────────
+function gerarFallbackChat(msg, dadosBuscados, info) {
+    const nome = info?.nome?.split(' ')[0] || '';
+    const t = msg.toLowerCase();
+
+    if (t.match(/^ol[aá]|^oi\b|^bom\s+(dia|tarde|noite)/))
+        return `Olá${nome ? ', ' + nome : ''}! 🐾 Sou o PetFlow AI. Pergunte sobre consumo, horários ou previsão de ração!`;
+
+    if (dadosBuscados?.semDados)
+        return `Não encontrei dados para esse período. Tente perguntar sobre um intervalo que já tenha leituras registradas.`;
+
+    // Período específico
+    if (dadosBuscados?.consumoTotal !== undefined) {
+        const d = dadosBuscados;
+        return `📊 Em ${d.periodo}: consumo total de ${d.consumoTotal} kg, média de ${d.mediaDiaria} kg/dia em ${d.diasComDados} dias com registro.`;
+    }
+
+    // Métricas gerais
+    const m = dadosBuscados?.metricas;
+    if (!m) return `🤖 Operando sem IA no momento. Sem dados suficientes disponíveis.`;
+
+    if (t.match(/acab|durar|prever|comprar/))
+        return m.previsao_acabamento_dias != null ? `📦 Com o consumo atual, a ração dura mais ${m.previsao_acabamento_dias} dia(s).` : `Sem dados suficientes para prever.`;
+    if (t.match(/hor[aá]rio|pico|quando\s+come/))
+        return m.horario_pico ? `⏰ Pico de alimentação às ${m.horario_pico.hora}h (${m.horario_pico.percentual}% do consumo diário).` : `Sem dados de horário ainda.`;
+    if (t.match(/peso|pote/))
+        return `⚖️ Peso atual no pote: ${m.peso_atual} kg.`;
+
+    return `🤖 Operando sem IA. Peso no pote: ${m.peso_atual} kg | Média 7d: ${m.media_7d} kg/dia.`;
+}
+
+// ── ENDPOINT PRINCIPAL DO CHAT ────────────────────────────────
+app.post('/api/chat/mensagem', autenticarToken, async (req, res) => {
+    const uid = req.usuario.id;
+    const { mensagem } = req.body;
+    if (!mensagem?.trim()) return res.status(400).json({ error: "Mensagem vazia." });
+
+    try {
+        const info = await new Promise(r =>
+            db.get("SELECT nome, raca_animal, nome_racao FROM usuarios WHERE id = ?", [uid], (e, row) => r(row || {}))
+        );
+
+        // 1. Detectar intenção da pergunta
+        const intencao = detectarIntencao(mensagem);
+
+        // 2. Buscar dados precisos do banco conforme a intenção
+        const dadosBuscados = await buscarDadosPrecisosParaChat(uid, intencao);
+
+        // 3. Montar contexto com os dados reais
+        const contextoDados = montarContextoPreciso(dadosBuscados, intencao);
+
+        // 4. System prompt com contexto preciso
+        const systemPrompt = `Você é o PetFlow AI, assistente veterinário especializado em monitoramento de alimentação de pets.
 
 TUTOR E PET:
-- Tutor: ${info.nome||'Usuário'}
-- Raça: ${info.raca_animal||'não informada'}
-- Ração: ${info.nome_racao||'não informada'}
-- Agora: ${formatarDataHoraExibicao(getDataHoraBrasil())}
+- Tutor: ${info.nome || 'Usuário'}
+- Raça do animal: ${info.raca_animal || 'não informada'}
+- Ração utilizada: ${info.nome_racao || 'não informada'}
+- Data e hora atual: ${formatarDataHoraExibicao(getDataHoraBrasil())}
 
-DADOS ATUAIS:
-${ctx}
+${contextoDados}
 
-REGRAS:
+REGRAS ABSOLUTAS:
 - Responda SEMPRE em português brasileiro
-- Seja amigável e use o nome do tutor quando adequado
+- Use SOMENTE os números fornecidos acima — nunca estime, arredonde diferente ou calcule por conta própria
+- Se os dados disserem "consumo total: 2.450 kg", diga exatamente 2.450 kg
+- Seja amigável, use o nome do tutor quando fizer sentido
 - Máximo 4 frases por resposta
-- Base suas respostas nos dados reais acima
-- Sugira veterinário quando pertinente
-- Não invente dados
-- Emojis com moderação`;
+- Sugira veterinário quando pertinente à saúde do animal
+- Emojis com moderação
+- Para perguntas não relacionadas a dados (ex: "o que é SRD?"), responda normalmente com seu conhecimento veterinário`;
 
-        const hist=await new Promise(r=>db.all(`SELECT role,conteudo FROM chat_mensagens WHERE usuario_id=? ORDER BY id DESC LIMIT 20`,[uid],(e,rows)=>r(rows?rows.reverse():[])));
-        const messages=[{role:"system",content:systemPrompt},...hist.map(h=>({role:h.role,content:h.conteudo})),{role:"user",content:mensagem.trim()}];
-        const agora=formatarDataHoraSQL(getDataHoraBrasil());
-        await new Promise((res,rej)=>db.run(`INSERT INTO chat_mensagens (usuario_id,role,conteudo,data) VALUES(?,'user',?,?)`,[uid,mensagem.trim(),agora],(e)=>{if(e)rej(e);else res();}));
+        // 5. Buscar histórico recente do chat
+        const hist = await new Promise(r =>
+            db.all(`SELECT role, conteudo FROM chat_mensagens WHERE usuario_id = ? ORDER BY id DESC LIMIT 16`,
+                [uid], (e, rows) => r(rows ? rows.reverse() : []))
+        );
+
+        const messages = [
+            { role: "system", content: systemPrompt },
+            ...hist.map(h => ({ role: h.role, content: h.conteudo })),
+            { role: "user", content: mensagem.trim() }
+        ];
+
+        // 6. Salvar mensagem do usuário
+        const agora = formatarDataHoraSQL(getDataHoraBrasil());
+        await new Promise((res, rej) =>
+            db.run(`INSERT INTO chat_mensagens (usuario_id, role, conteudo, data) VALUES (?, 'user', ?, ?)`,
+                [uid, mensagem.trim(), agora], e => { if (e) rej(e); else res(); })
+        );
+
+        // 7. Chamar Groq ou fallback
         let resp;
-        if(GROQ_API_KEY){
-            try{resp=await chamarGroqAPI(messages,400);}
-            catch(e){console.error("Groq chat:",e.message);resp=gerarFallbackChat(mensagem,dados.length>=5?montarMetricas(dados):null,info);}
-        }else{resp=gerarFallbackChat(mensagem,dados.length>=5?montarMetricas(dados):null,info);}
-        const agoraResp=formatarDataHoraSQL(getDataHoraBrasil());
-        await new Promise((res,rej)=>db.run(`INSERT INTO chat_mensagens (usuario_id,role,conteudo,data) VALUES(?,'assistant',?,?)`,[uid,resp,agoraResp],(e)=>{if(e)rej(e);else res();}));
-        res.json({resposta:resp,fonte:GROQ_API_KEY?'groq':'local',timestamp:agoraResp});
-    }catch(e){console.error("Chat:",e);res.status(500).json({error:"Erro ao processar mensagem."});}
-});
+        if (GROQ_API_KEY) {
+            try {
+                resp = await chamarGroqAPI(messages, 450);
+            } catch (e) {
+                console.error("Groq chat:", e.message);
+                resp = gerarFallbackChat(mensagem, dadosBuscados, info);
+            }
+        } else {
+            resp = gerarFallbackChat(mensagem, dadosBuscados, info);
+        }
 
-function gerarFallbackChat(msg,m,info){
-    const t=msg.toLowerCase();
-    const nome=info?.nome?.split(' ')[0]||'';
-    if(t.includes('olá')||t.includes('oi ')||t.includes('^oi')||t==='oi')
-        return `Olá${nome?', '+nome:''}! 🐾 Sou o PetFlow AI. Pergunte sobre consumo, horários ou previsão de ração!`;
-    if((t.includes('ração')||t.includes('racao'))&&(t.includes('acabar')||t.includes('durar')||t.includes('falt')))
-        return m?.previsao_acabamento_dias!=null?`📦 Com o consumo atual, a ração dura mais ${m.previsao_acabamento_dias} dia(s).`:`Sem dados suficientes para prever o término.`;
-    if(t.includes('comeu')||t.includes('consumo')||t.includes('comendo'))
-        return m?`🍖 Nas últimas 24h: ${m.consumo_ultimas_24h} kg. Média 7 dias: ${m.media_7d} kg/dia.`:`Ainda não há dados suficientes.`;
-    if(t.includes('horário')||t.includes('hora')||t.includes('quando'))
-        return m?.horario_pico?`⏰ Pico de alimentação às ${m.horario_pico.hora}h (${m.horario_pico.percentual}% do consumo diário).`:`Sem dados de horário ainda.`;
-    if(t.includes('peso')||t.includes('pote'))
-        return m?`⚖️ Peso atual no pote: ${m.peso_atual} kg.`:`Sem leitura disponível.`;
-    return `🤖 Operando sem IA no momento. Peso no pote: ${m?.peso_atual??'?'} kg | Média 7d: ${m?.media_7d??'?'} kg/dia.`;
-}
+        // 8. Salvar resposta da IA
+        const agoraResp = formatarDataHoraSQL(getDataHoraBrasil());
+        await new Promise((res, rej) =>
+            db.run(`INSERT INTO chat_mensagens (usuario_id, role, conteudo, data) VALUES (?, 'assistant', ?, ?)`,
+                [uid, resp, agoraResp], e => { if (e) rej(e); else res(); })
+        );
+
+        res.json({ resposta: resp, fonte: GROQ_API_KEY ? 'groq' : 'local', timestamp: agoraResp });
+
+    } catch (e) {
+        console.error("Chat:", e);
+        res.status(500).json({ error: "Erro ao processar mensagem." });
+    }
+});
 
 // ── ROTAS ─────────────────────────────────────────────────────
 app.get('/login',(req,res)=>res.sendFile(path.join(frontendPath,'login.html')));
