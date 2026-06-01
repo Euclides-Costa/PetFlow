@@ -540,7 +540,7 @@
             <span>🟢 Online</span>
         </div>
         <div class="user-name" id="userNameDisplay">Carregando...</div>
-        <button class="btn-logout" id="logoutBtn">🚪 Sair</button>
+        <button class="btn-logout" id="logoutBtn">Sair</button>
     </div>
 </div>
 
@@ -553,7 +553,7 @@
 
     <!-- FILTROS (ordem: Data Inicial, Data Final, Aplicar, Insights IA, Resetar) -->
     <div class="filters-section">
-        <div class="filters-title"><span>📅</span> Filtros Personalizados</div>
+        <div class="filters-title"><span></span>Filtros Personalizados</div>
         <div class="filters-row">
             <div class="filter-group">
                 <label>Data Inicial</label>
@@ -563,41 +563,41 @@
                 <label>Data Final</label>
                 <input type="date" id="dataFim">
             </div>
-            <button class="btn-filter" id="aplicarFiltros">🔍 Aplicar Filtros</button>
-            <button class="btn-insights-modal" id="openInsightsModalBtn">🧠 <span>Insights IA</span></button>
-            <button class="btn-filter btn-reset" id="resetFiltros">↺ Resetar Filtros</button>
+            <button class="btn-filter" id="aplicarFiltros">Aplicar Filtros</button>
+            <button class="btn-insights-modal" id="openInsightsModalBtn"><span>Insights IA</span></button>
+            <button class="btn-filter btn-reset" id="resetFiltros">Resetar Filtros</button>
         </div>
     </div>
 
     <!-- KPIs -->
     <div class="kpi-grid">
         <div class="kpi-card">
-            <div class="kpi-title">🍖 Consumo Total</div>
+            <div class="kpi-title">Consumo Total</div>
             <div class="kpi-value" id="totalConsumo">0<span class="kpi-unit"> kg</span></div>
             <div class="kpi-trend" id="trendConsumo">No período selecionado</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">📊 Média Diária</div>
+            <div class="kpi-title">Média Diária</div>
             <div class="kpi-value" id="mediaDiaria">0<span class="kpi-unit"> kg/dia</span></div>
             <div class="kpi-trend" id="trendMedia">Média do período</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">📈 Maior Consumo</div>
+            <div class="kpi-title">Maior Consumo</div>
             <div class="kpi-value" id="maxConsumo">0<span class="kpi-unit"> kg</span></div>
             <div class="kpi-trend" id="dataMaxConsumo">-</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">📉 Menor Consumo</div>
+            <div class="kpi-title">Menor Consumo</div>
             <div class="kpi-value" id="minConsumo">0<span class="kpi-unit"> kg</span></div>
             <div class="kpi-trend" id="dataMinConsumo">-</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">📅 Dias no Período</div>
+            <div class="kpi-title">Dias no Período</div>
             <div class="kpi-value" id="totalDias">0<span class="kpi-unit"> dias</span></div>
             <div class="kpi-trend" id="leiturasCount">0 leituras</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-title">⚖️ Peso Atual</div>
+            <div class="kpi-title">Peso Atual</div>
             <div class="kpi-value" id="pesoAtual">0<span class="kpi-unit"> kg</span></div>
             <div class="kpi-trend" id="ultimaAtualizacao">Aguardando dados</div>
         </div>
@@ -606,11 +606,11 @@
     <!-- GRÁFICO -->
     <div class="chart-section">
         <div class="chart-header">
-            <h3>📊 Consumo Diário</h3>
+            <h3>Consumo Diário</h3>
             <div class="chart-type-buttons">
-                <button class="chart-type-btn" data-type="bar">📊 Barras</button>
-                <button class="chart-type-btn" data-type="line">📈 Linha</button>
-                <button class="chart-type-btn" data-type="area">🎨 Área</button>
+                <button class="chart-type-btn" data-type="bar">Barras</button>
+                <button class="chart-type-btn" data-type="line">Linha</button>
+                <button class="chart-type-btn" data-type="area">Área</button>
             </div>
         </div>
         <div class="chart-container">
@@ -621,11 +621,11 @@
     <!-- HISTÓRICO -->
     <div class="history-section">
         <div class="history-header">
-            <h3>📋 Histórico de Medições</h3>
+            <h3>Histórico de Medições</h3>
             <div class="export-buttons">
-                <button class="btn-export" id="exportCSV">📄 Exportar CSV</button>
-                <button class="btn-export" id="exportJSON">📋 Exportar JSON</button>
-                <button class="btn-refresh" id="refreshHistory">🔄 Atualizar</button>
+                <button class="btn-export" id="exportCSV">Exportar CSV</button>
+                <button class="btn-export" id="exportJSON">Exportar JSON</button>
+                <button class="btn-refresh" id="refreshHistory">Atualizar</button>
             </div>
         </div>
         <div class="history-table-container">
@@ -644,20 +644,20 @@
 <div id="insightsModal" class="modal-overlay">
     <div class="modal-container">
         <div class="modal-header">
-            <h2>🧠 Insights Inteligentes <span class="ai-badge" style="background:rgba(46,204,113,0.2); color:#2ecc71;">IA</span></h2>
+            <h2>Insights Inteligentes <span class="ai-badge" style="background:rgba(46,204,113,0.2); color:#2ecc71;">IA</span></h2>
             <button class="modal-close" id="closeInsightsModalBtn">✕</button>
         </div>
         <div class="modal-content">
             <div class="ai-section-inside">
                 <div class="ai-section-header">
                     <div class="ai-section-title">
-                        🧠 Análise de Alimentação
+                        Análise de Alimentação
                         <span class="ai-badge">Groq AI</span>
                     </div>
                     <div style="display:flex; gap:10px; flex-wrap:wrap;">
                         <button class="ai-historico-btn" id="btnHistoricoAI">📋 Ver Histórico</button>
                         <button class="btn-ai-modal" id="btnAtualizarAI">
-                            <span id="btnAIIcon">🔍</span> Analisar com IA
+                            <span id="btnAIIcon"></span> Analisar com IA
                         </button>
                     </div>
                 </div>
@@ -803,7 +803,7 @@
         const icon = document.getElementById('btnAIIcon');
         btn.disabled = true;
         icon.textContent = '⏳';
-        btn.innerHTML = '<span>⏳</span> Analisando...';
+        btn.innerHTML = '<span></span> Analisando...';
 
         mostrarLoadingIA();
 
@@ -836,7 +836,7 @@
         } finally {
             analisandoIA = false;
             btn.disabled = false;
-            btn.innerHTML = '<span>🔍</span> Analisar com IA';
+            btn.innerHTML = '<span></span> Analisar com IA';
         }
     }
 
@@ -863,27 +863,27 @@
         const tipo = analise.tipo_alerta || 'info';
         const badgeClass = `badge-${tipo}`;
         const tipoLabel = {
-            normal: '✅ Normal',
-            atencao: '⚠️ Atenção',
-            urgencia: '🚨 Urgência',
-            info: 'ℹ️ Info'
-        }[tipo] || 'ℹ️ Info';
+            normal: 'Normal',
+            atencao: '⚠Atenção',
+            urgencia: 'Urgência',
+            info: 'ℹInfo'
+        }[tipo] || 'ℹInfo';
 
         let metricsHtml = '';
         if (analise.metricas) {
             const m = analise.metricas;
             const chips = [];
-            if (m.media_7d > 0) chips.push(`📊 Média 7d: ${m.media_7d} kg/dia`);
-            if (m.media_30d > 0) chips.push(`📅 Média 30d: ${m.media_30d} kg/dia`);
-            if (m.consumo_ultimas_24h > 0) chips.push(`🕐 Últimas 24h: ${m.consumo_ultimas_24h} kg`);
+            if (m.media_7d > 0) chips.push(`Média 7d: ${m.media_7d} kg/dia`);
+            if (m.media_30d > 0) chips.push(`Média 30d: ${m.media_30d} kg/dia`);
+            if (m.consumo_ultimas_24h > 0) chips.push(`Últimas 24h: ${m.consumo_ultimas_24h} kg`);
             if (m.tendencia && m.tendencia !== 'insuficiente') {
-                const tendLabel = { crescente: '📈 Crescente', decrescente: '📉 Decrescente', estavel: '➡️ Estável' };
+                const tendLabel = { crescente: 'Crescente', decrescente: 'Decrescente', estavel: '➡Estável' };
                 chips.push(`Tendência: ${tendLabel[m.tendencia] || m.tendencia}`);
             }
-            if (m.horario_pico) chips.push(`⏰ Pico: ${m.horario_pico.hora}h (${m.horario_pico.percentual}%)`);
+            if (m.horario_pico) chips.push(`Pico: ${m.horario_pico.hora}h (${m.horario_pico.percentual}%)`);
             if (m.variacao_percentual_7d_vs_30d !== 0) {
                 const v = m.variacao_percentual_7d_vs_30d;
-                chips.push(`📉 Variação: ${v > 0 ? '+' : ''}${v}%`);
+                chips.push(`Variação: ${v > 0 ? '+' : ''}${v}%`);
             }
 
             if (chips.length > 0) {
@@ -1226,10 +1226,10 @@
         </div>
     </div>
     <div class="chat-suggestions" id="chatSuggestions">
-        <span class="suggestion-chip" data-msg="Como está o consumo hoje?">📊 Consumo hoje</span>
-        <span class="suggestion-chip" data-msg="Quando a ração vai acabar?">📦 Previsão ração</span>
-        <span class="suggestion-chip" data-msg="Qual o horário que meu pet mais come?">⏰ Horário de pico</span>
-        <span class="suggestion-chip" data-msg="O consumo está normal?">✅ Está normal?</span>
+        <span class="suggestion-chip" data-msg="Como está o consumo hoje?">Consumo hoje</span>
+        <span class="suggestion-chip" data-msg="Quando a ração vai acabar?">Previsão ração</span>
+        <span class="suggestion-chip" data-msg="Qual o horário que meu pet mais come?">Horário de pico</span>
+        <span class="suggestion-chip" data-msg="O consumo está normal?">Está normal?</span>
     </div>
     <div class="chat-input-area">
         <textarea class="chat-input" id="chatInput" placeholder="Pergunte sobre seu pet..." rows="1" maxlength="500"></textarea>

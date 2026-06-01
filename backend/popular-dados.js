@@ -8,9 +8,9 @@ const db = new sqlite3.Database(path.join(__dirname, "petflow.db"));
 // CONFIGURAÇÕES
 // ============================================================
 
-// Consumo diário do animal (em kg)
-const CONSUMO_MINIMO_DIARIO = 0.700; // 700g
-const CONSUMO_MAXIMO_DIARIO = 1.200; // 1200g
+// Consumo diário do animal (em kg) - entre 500g e 1200g
+const CONSUMO_MINIMO_DIARIO = 0.5;   // 500g
+const CONSUMO_MAXIMO_DIARIO = 1.2;   // 1200g
 
 // Peso máximo do comedouro (kg)
 const PESO_MAXIMO_COMEDOURO = 3.0;
@@ -59,7 +59,7 @@ function variar(valor, percentual) {
     return Math.max(0, valor + variacao);
 }
 
-// Calcular consumo diário aleatório (entre 0.7 e 1.2 kg)
+// Calcular consumo diário aleatório (entre 0.5 e 1.2 kg)
 function getConsumoDiario() {
     return CONSUMO_MINIMO_DIARIO + Math.random() * (CONSUMO_MAXIMO_DIARIO - CONSUMO_MINIMO_DIARIO);
 }
@@ -274,7 +274,7 @@ function inserirDados(dados, mes, ano) {
 }
 
 // ============================================================
-// POPULAR BANCO COMPLETO
+// POPULAR BANCO COMPLETO (COM JUNHO/2026)
 // ============================================================
 
 async function popularBancoCompleto() {
@@ -338,12 +338,13 @@ async function popularBancoCompleto() {
                 });
             }
 
-            // Gerar dados para cada mês
+            // Gerar dados para cada mês (incluindo Junho/2026)
             const meses = [
                 { nome: "Fevereiro", ano: 2026, mes: 2, dias: 28 },
                 { nome: "Março", ano: 2026, mes: 3, dias: 31 },
                 { nome: "Abril", ano: 2026, mes: 4, dias: 30 },
-                { nome: "Maio", ano: 2026, mes: 5, dias: 31 }
+                { nome: "Maio", ano: 2026, mes: 5, dias: 31 },
+                { nome: "Junho", ano: 2026, mes: 6, dias: 30 }   // ← NOVO MÊS
             ];
 
             let totalRegistros = 0;
@@ -376,7 +377,7 @@ function mostrarEstatisticas(usuario_id) {
     console.log('========================================');
 
     db.get(`
-        SELECT 
+        SELECT
             COUNT(*) as total,
             MIN(valor) as minimo,
             MAX(valor) as maximo,
@@ -396,7 +397,7 @@ function mostrarEstatisticas(usuario_id) {
 
         // Consumo por mês
         db.all(`
-            SELECT 
+            SELECT
                 strftime('%m/%Y', data) as mes_ano,
                 COUNT(*) as leituras,
                 MIN(valor) as minimo,
@@ -415,7 +416,7 @@ function mostrarEstatisticas(usuario_id) {
 
             // Consumo diário estimado
             db.all(`
-                SELECT 
+                SELECT
                     strftime('%Y-%m-%d', data) as dia,
                     MAX(valor) - MIN(valor) as consumo_dia
                 FROM pesos
@@ -452,6 +453,7 @@ console.log('   📅 Fevereiro/2026 (28 dias)');
 console.log('   📅 Março/2026 (31 dias)');
 console.log('   📅 Abril/2026 (30 dias)');
 console.log('   📅 Maio/2026 (31 dias)');
+console.log('   📅 Junho/2026 (30 dias)');   // ← NOVO
 console.log(`🍖 Consumo diário: ${CONSUMO_MINIMO_DIARIO * 1000}g - ${CONSUMO_MAXIMO_DIARIO * 1000}g`);
 console.log('========================================\n');
 

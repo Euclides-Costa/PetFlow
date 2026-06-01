@@ -216,11 +216,11 @@
 
         <form id="loginForm">
             <div class="form-group">
-                <label>📧 Email</label>
+                <label>Email</label>
                 <input type="email" id="email" required placeholder="seu@email.com">
             </div>
             <div class="form-group">
-                <label>🔒 Senha</label>
+                <label>Senha</label>
                 <input type="password" id="senha" required placeholder="••••••">
             </div>
             <button type="submit" class="btn-login">Entrar</button>
@@ -246,7 +246,7 @@
     if (token && usuario.nome) {
         const infoBox = document.getElementById('infoBox');
         infoBox.style.display = 'block';
-        infoBox.innerHTML = `🔐 Você está logado como <strong>${usuario.nome}</strong>. <a href="/dashboard" style="color:#2ecc71;">Clique aqui</a> para ir ao Dashboard ou faça logout abaixo.`;
+        infoBox.innerHTML = `Você está logado como <strong>${usuario.nome}</strong>. <a href="/dashboard" style="color:#2ecc71;">Clique aqui</a> para ir ao Dashboard ou faça logout abaixo.`;
     }
 
     // Botão para limpar sessão
