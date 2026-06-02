@@ -4,7 +4,7 @@
 
 ---
 
-## 📌 Descrição
+## Descrição
 
 O **PetFlow** é um sistema completo de monitoramento alimentar para pets. Um ESP32 com célula de carga mede continuamente o peso da ração e envia os dados para um servidor Node.js, que os processa e os exibe em um dashboard web com gráficos, histórico e insights gerados por inteligência artificial.
 
@@ -12,32 +12,32 @@ O sistema detecta padrões de consumo, emite alertas quando o pet não se alimen
 
 ---
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
 ### Hardware
-- ⚖️ Medição contínua do peso da ração via célula de carga + HX711
-- 📡 Envio automático de leituras via Wi-Fi a cada 5 segundos
-- 🔌 Alimentado via USB ou fonte 5V
+-  Medição contínua do peso da ração via célula de carga + HX711
+-  Envio automático de leituras via Wi-Fi a cada 5 segundos
+-  Alimentado via USB ou fonte 5V
 
 ### Backend
-- 🔐 Autenticação segura com JWT (cadastro e login de usuários)
-- 📦 Armazenamento local com SQLite
-- 🔔 Alertas automáticos se o pet não se alimentar por mais de 8 horas
-- 🧠 Análise de IA com detecção de anomalias e geração de insights
-- 💬 Chat com IA veterinária contextualizada com dados reais do pet
-- 📊 API REST completa com endpoints documentados
+-  Autenticação segura com JWT (cadastro e login de usuários)
+-  Armazenamento local com SQLite
+-  Alertas automáticos se o pet não se alimentar por mais de 8 horas
+-  Análise de IA com detecção de anomalias e geração de insights
+-  Chat com IA veterinária contextualizada com dados reais do pet
+-  API REST completa com endpoints documentados
 
 ### Dashboard Web
-- 📈 Gráficos de consumo diário (barras, linha ou área)
-- 🗂️ KPIs: consumo total, média diária, maior/menor consumo, peso atual
-- 🔍 Filtros por período personalizáveis
-- 📤 Exportação de dados em CSV e JSON
-- 🤖 Seção de insights inteligentes com análise automática
-- 💬 Chat flutuante com o PetFlow AI (histórico persistente)
+-  Gráficos de consumo diário (barras, linha ou área)
+-  KPIs: consumo total, média diária, maior/menor consumo, peso atual
+-  Filtros por período personalizáveis
+-  Exportação de dados em CSV e JSON
+-  Seção de insights inteligentes com análise automática
+-  Chat flutuante com o PetFlow AI (histórico persistente)
 
 ---
 
-## 🛠️ Tecnologias
+##  Tecnologias
 
 | Camada | Tecnologia |
 |---|---|
@@ -47,11 +47,11 @@ O sistema detecta padrões de consumo, emite alertas quando o pet não se alimen
 | Banco de Dados | SQLite (via sqlite3) |
 | Autenticação | JWT (jsonwebtoken + bcryptjs) |
 | IA | Groq API (llama-3.1-8b-instant) |
-| Frontend | HTML + CSS + JavaScript + Chart.js |
+| Frontend | HTML + CSS + JavaScript +          |
 
 ---
 
-## 🔌 Componentes de Hardware
+##  Componentes de Hardware
 
 - ESP32 (com Wi-Fi integrado)
 - Célula de carga (0–5 kg)
@@ -78,26 +78,26 @@ O sistema detecta padrões de consumo, emite alertas quando o pet não se alimen
 
 ---
 
-## 📁 Estrutura do Projeto
+##  Estrutura do Projeto
 
 ```
 PetFlow/
 ├── backend/
 │   ├── server.js          # Servidor Express + endpoints + lógica de IA
-│   ├── petflow.db         # Banco SQLite (gerado automaticamente)
-│   ├── .env               # Variáveis de ambiente (não versionar)
+│   ├── petflow.db         # Banco SQLite 
+│   ├── .env               # Variáveis de ambiente
 │   └── package.json
 ├── frontend/
 │   ├── login.html
 │   ├── cadastro.html
 │   └── dashboard.html
 └── firmware/
-    └── petflow.ino        # Código do ESP32
+    └── petflow.ino       
 ```
 
 ---
 
-## ⚙️ Como Executar
+##  Como Executar
 
 ### Pré-requisitos
 - Node.js 18+
@@ -149,7 +149,7 @@ http://localhost:3000
 
 ---
 
-## 🧠 Inteligência Artificial
+##  Inteligência Artificial
 
 O sistema utiliza a **Groq API** com o modelo `llama-3.1-8b-instant` para:
 
@@ -164,7 +164,7 @@ Se a `GROQ_API_KEY` não estiver configurada, o sistema funciona normalmente com
 
 ---
 
-## 🗄️ Banco de Dados
+##  Banco de Dados
 
 | Tabela | Descrição |
 |---|---|
@@ -176,7 +176,7 @@ Se a `GROQ_API_KEY` não estiver configurada, o sistema funciona normalmente com
 
 ---
 
-## 🔗 Endpoints da API
+##  Endpoints da API
 
 | Método | Rota | Descrição |
 |---|---|---|
@@ -194,6 +194,6 @@ Se a `GROQ_API_KEY` não estiver configurada, o sistema funciona normalmente com
 
 ---
 
-## 👥 Autores
+##  Autores
 
 **Euclides Benício** e **Arthur Augusto**
