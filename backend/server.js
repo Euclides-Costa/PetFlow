@@ -198,7 +198,7 @@ function chamarGroqAPI(messages, maxTokens=300) {
         if(!GROQ_API_KEY){reject(new Error("Sem chave"));return;}
         const body=JSON.stringify({model:GROQ_MODEL,messages,temperature:0.4,max_tokens:maxTokens});
         const req=https.request({hostname:GROQ_ENDPOINT,path:"/openai/v1/chat/completions",method:"POST",
-            headers:{"Authorization":`Bearer ${GROQ_API_KEY}`,"Content-Type":"application/json","Content-Length":Buffer.byteLength(body)}},
+                headers:{"Authorization":`Bearer ${GROQ_API_KEY}`,"Content-Type":"application/json","Content-Length":Buffer.byteLength(body)}},
             (r)=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{
                 try{const j=JSON.parse(d);if(j.error){reject(new Error(j.error.message));return;}resolve(j.choices?.[0]?.message?.content||'');}
                 catch(e){reject(e);}
@@ -262,44 +262,34 @@ app.get('/api/ai/historico', autenticarToken, (req,res)=>{
 
 // ── CHAT ──────────────────────────────────────────────────────
 app.get('/api/chat/historico', autenticarToken, (req, res) => {
-    db.all(
-        `SELECT id, role, conteudo, data FROM chat_mensagens WHERE usuario_id = ? ORDER BY id ASC`,
-        [req.usuario.id],
-        (e, r) => { if (e) return res.status(500).json({ error: e.message }); res.json(r); }
-    );
+    db.all(`SELECT id, role, conteudo, data FROM chat_mensagens WHERE usuario_id = ? ORDER BY id ASC`, [req.usuario.id], (e, r) => { if (e) return res.status(500).json({ error: e.message }); res.json(r); });
 });
 
 app.delete('/api/chat/historico', autenticarToken, (req, res) => {
-    db.run(`DELETE FROM chat_mensagens WHERE usuario_id = ?`, [req.usuario.id], (e) => {
-        if (e) return res.status(500).json({ error: e.message });
-        res.json({ success: true });
-    });
+    db.run(`DELETE FROM chat_mensagens WHERE usuario_id = ?`, [req.usuario.id], (e) => { if (e) return res.status(500).json({ error: e.message }); res.json({ success: true }); });
 });
 
-// ── PARSER DE INTENÇÃO ────────────────────────────────────────
-// Detecta o tipo de pergunta e resolve datas/períodos mencionados
-
+// ── PARSER DE INTENÇÃO (melhorado para peso atual) ────────────
 function detectarIntencao(texto) {
     const t = texto.toLowerCase();
-    const intencao = {
-        tipo: 'geral',       // geral | consumo_periodo | consumo_hoje | consumo_semana | horario_pico | previsao | peso_atual | comparativo
-        dataInicio: null,
-        dataFim: null,
-        descricaoPeriodo: null
-    };
-
+    const intencao = { tipo: 'geral', dataInicio: null, dataFim: null, descricaoPeriodo: null };
     const agora = getDataHoraBrasil();
 
-    // ── Detectar mês nomeado (ex: "abril", "março de 2025")
+    // ── PESO ATUAL (cobertura abrangente) ──
+    if (t.match(/peso\s+(atual|do\s+pote|no\s+pote|da\s+ração|agora)|quanto\s+(tem|resta|pesa|de\s+ração)|pote\s+(agora|vazio|está|tem)|qual\s+o\s+peso|peso\s+do\s+pote/)) {
+        intencao.tipo = 'peso_atual';
+        return intencao;
+    }
+
+    // ── Detectar mês nomeado ──
     const meses = { janeiro:0, fevereiro:1, março:2, marco:2, abril:3, maio:4, junho:5,
-                    julho:6, agosto:7, setembro:8, outubro:9, novembro:10, dezembro:11 };
+        julho:6, agosto:7, setembro:8, outubro:9, novembro:10, dezembro:11 };
     for (const [nome, num] of Object.entries(meses)) {
         if (t.includes(nome)) {
             const anoMatch = t.match(/\b(20\d{2})\b/);
             const ano = anoMatch ? parseInt(anoMatch[1]) : agora.getFullYear();
             const inicio = new Date(ano, num, 1, 0, 0, 0);
             const fim = new Date(ano, num + 1, 0, 23, 59, 59);
-            // Se o mês inferido está no futuro, assume ano anterior
             if (inicio > agora && !anoMatch) {
                 inicio.setFullYear(ano - 1);
                 fim.setFullYear(ano - 1);
@@ -312,7 +302,7 @@ function detectarIntencao(texto) {
         }
     }
 
-    // ── "últimos N dias/semanas"
+    // ── "últimos N dias/semanas" ──
     const matchDias = t.match(/[uú]ltimos?\s+(\d+)\s+dias?/);
     const matchSemanas = t.match(/[uú]ltimas?\s+(\d+)\s+semanas?/);
     if (matchDias) {
@@ -334,7 +324,7 @@ function detectarIntencao(texto) {
         return intencao;
     }
 
-    // ── "essa semana" / "esta semana"
+    // ── "essa semana" / "esta semana" ──
     if (t.match(/essa\s+semana|esta\s+semana/)) {
         const inicio = new Date(agora);
         inicio.setDate(agora.getDate() - agora.getDay()); inicio.setHours(0,0,0,0);
@@ -345,7 +335,7 @@ function detectarIntencao(texto) {
         return intencao;
     }
 
-    // ── "semana passada"
+    // ── "semana passada" ──
     if (t.match(/semana\s+passada|semana\s+anterior/)) {
         const fimSem = new Date(agora);
         fimSem.setDate(agora.getDate() - agora.getDay() - 1); fimSem.setHours(23,59,59);
@@ -358,7 +348,7 @@ function detectarIntencao(texto) {
         return intencao;
     }
 
-    // ── "mês passado" / "mês anterior"
+    // ── "mês passado" ──
     if (t.match(/m[eê]s\s+passado|m[eê]s\s+anterior/)) {
         const mesPassado = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
         const fimMes = new Date(agora.getFullYear(), agora.getMonth(), 0, 23, 59, 59);
@@ -369,7 +359,7 @@ function detectarIntencao(texto) {
         return intencao;
     }
 
-    // ── "hoje"
+    // ── "hoje" ──
     if (t.includes('hoje')) {
         const inicio = new Date(agora); inicio.setHours(0,0,0,0);
         intencao.tipo = 'consumo_periodo';
@@ -379,7 +369,7 @@ function detectarIntencao(texto) {
         return intencao;
     }
 
-    // ── "ontem"
+    // ── "ontem" ──
     if (t.includes('ontem')) {
         const ontem = new Date(agora); ontem.setDate(ontem.getDate() - 1);
         const inicio = new Date(ontem); inicio.setHours(0,0,0,0);
@@ -391,22 +381,47 @@ function detectarIntencao(texto) {
         return intencao;
     }
 
-    // ── Outros tipos específicos (sem período definido — usa dados gerais)
+    // ── Outros tipos específicos ──
     if (t.match(/hor[aá]rio|quando\s+come|quando\s+costuma|pico/))
-        { intencao.tipo = 'horario_pico'; return intencao; }
+    { intencao.tipo = 'horario_pico'; return intencao; }
     if (t.match(/acab|durar|prever|previs|comprar|repor|estoque/))
-        { intencao.tipo = 'previsao'; return intencao; }
-    if (t.match(/peso\s+atual|quanto\s+tem|quanto\s+resta|pote\s+agora/))
-        { intencao.tipo = 'peso_atual'; return intencao; }
+    { intencao.tipo = 'previsao'; return intencao; }
     if (t.match(/compar|diferença|variou|variação|mudou|aument|diminu|caiu|subiu/))
-        { intencao.tipo = 'comparativo'; return intencao; }
+    { intencao.tipo = 'comparativo'; return intencao; }
 
-    return intencao; // tipo = 'geral'
+    return intencao;
 }
 
-// ── BUSCA DE DADOS PRECISA POR PERÍODO ───────────────────────
+// ── BUSCA DE DADOS PRECISA (corrigida para peso atual com ORDER BY id) ──
 async function buscarDadosPrecisosParaChat(uid, intencao) {
-    // Se a intenção tem um período definido, busca exatamente esse período
+    // ── 1. Peso atual (busca último registro, igual ao polling do dashboard) ──
+    if (intencao.tipo === 'peso_atual') {
+        const row = await new Promise(r =>
+            db.get(
+                `SELECT valor, data FROM pesos WHERE usuario_id = ? AND valor >= 0 ORDER BY id DESC LIMIT 1`,
+                [uid],
+                (e, rs) => {
+                    if (e) {
+                        console.error("Erro ao buscar último peso:", e);
+                        r(null);
+                    } else {
+                        if (rs) console.log(`[DEBUG] Último peso encontrado: ${rs.valor} kg em ${rs.data}`);
+                        else console.log(`[DEBUG] Nenhum peso encontrado para o usuário ${uid}`);
+                        r(rs);
+                    }
+                }
+            )
+        );
+        if (!row) return { semDados: true, tipo: 'peso_atual' };
+        return {
+            tipo: 'peso_atual',
+            peso_atual: parseFloat(row.valor.toFixed(3)),
+            data: row.data,
+            semDados: false
+        };
+    }
+
+    // ── 2. Período específico ──
     if (intencao.dataInicio && intencao.dataFim) {
         const rows = await new Promise(r =>
             db.all(
@@ -415,10 +430,8 @@ async function buscarDadosPrecisosParaChat(uid, intencao) {
                 (e, rs) => r(rs || [])
             )
         );
-
         if (rows.length < 2) return { periodo: intencao.descricaoPeriodo, semDados: true };
 
-        // Calcular consumo real do período (soma de todas as quedas de peso)
         let consumoTotal = 0;
         const consumoPorDia = {};
         for (let i = 1; i < rows.length; i++) {
@@ -429,18 +442,14 @@ async function buscarDadosPrecisosParaChat(uid, intencao) {
                 consumoPorDia[dia] = (consumoPorDia[dia] || 0) + diff;
             }
         }
-
         const diasComDados = Object.keys(consumoPorDia).length;
         const mediaDiaria = diasComDados > 0 ? consumoTotal / diasComDados : 0;
-
-        // Maior e menor dia
         let maiorDia = null, maiorVal = 0, menorDia = null, menorVal = Infinity;
         for (const [dia, val] of Object.entries(consumoPorDia)) {
             if (val > maiorVal) { maiorVal = val; maiorDia = dia; }
             if (val < menorVal) { menorVal = val; menorDia = dia; }
         }
 
-        // Horário de pico no período
         const porHora = new Array(24).fill(0);
         for (let i = 1; i < rows.length; i++) {
             const diff = rows[i-1].valor - rows[i].valor;
@@ -466,7 +475,7 @@ async function buscarDadosPrecisosParaChat(uid, intencao) {
         };
     }
 
-    // Sem período definido — retorna métricas gerais dos últimos 30 dias
+    // ── 3. Geral (últimos 30 dias) ──
     const lim = new Date(getDataHoraBrasil()); lim.setDate(lim.getDate() - 30);
     const rows = await new Promise(r =>
         db.all(`SELECT valor, data FROM pesos WHERE usuario_id = ? AND valor >= 0 AND data >= ? ORDER BY data ASC`,
@@ -476,10 +485,16 @@ async function buscarDadosPrecisosParaChat(uid, intencao) {
     return { metricas: montarMetricas(rows), semDados: false };
 }
 
-// ── MONTAR CONTEXTO PRECISO PARA O SYSTEM PROMPT ─────────────
+// ── MONTAR CONTEXTO PRECISO PARA O SYSTEM PROMPT ──────────────
 function montarContextoPreciso(dadosBuscados, intencao) {
     if (dadosBuscados.semDados) {
-        return `Não há dados suficientes para o período solicitado (${dadosBuscados.periodo || 'geral'}).`;
+        return `Não há dados suficientes para o período solicitado${dadosBuscados.periodo ? ' (' + dadosBuscados.periodo + ')' : ''}.`;
+    }
+
+    // Caso especial: peso atual
+    if (dadosBuscados.tipo === 'peso_atual') {
+        const dataHora = new Date(dadosBuscados.data);
+        return `DADOS REAIS DO BANCO — Peso atual do pote: ${dadosBuscados.peso_atual} kg (medido em ${dataHora.toLocaleDateString('pt-BR')} às ${dataHora.toLocaleTimeString('pt-BR')}).\nIMPORTANTE: Use EXATAMENTE esse número.`;
     }
 
     // Período específico
@@ -522,7 +537,7 @@ IMPORTANTE: Use EXATAMENTE esses números na resposta. Não estime nem calcule p
     return 'Dados indisponíveis.';
 }
 
-// ── FALLBACK SEM API ──────────────────────────────────────────
+// ── FALLBACK SEM API (corrigido para peso atual) ─────────────
 function gerarFallbackChat(msg, dadosBuscados, info) {
     const nome = info?.nome?.split(' ')[0] || '';
     const t = msg.toLowerCase();
@@ -531,10 +546,16 @@ function gerarFallbackChat(msg, dadosBuscados, info) {
         return `Olá${nome ? ', ' + nome : ''}! 🐾 Sou o PetFlow AI. Pergunte sobre consumo, horários ou previsão de ração!`;
 
     if (dadosBuscados?.semDados)
-        return `Não encontrei dados para esse período. Tente perguntar sobre um intervalo que já tenha leituras registradas.`;
+        return `Não encontrei dados para essa consulta. Tente novamente mais tarde.`;
+
+    // ── Peso atual (fallback direto) ──
+    if (dadosBuscados.tipo === 'peso_atual') {
+        const dataHora = new Date(dadosBuscados.data);
+        return `⚖️ O peso atual do pote é de ${dadosBuscados.peso_atual} kg (última medição: ${dataHora.toLocaleDateString('pt-BR')} às ${dataHora.toLocaleTimeString('pt-BR')}).`;
+    }
 
     // Período específico
-    if (dadosBuscados?.consumoTotal !== undefined) {
+    if (dadosBuscados.consumoTotal !== undefined) {
         const d = dadosBuscados;
         return `📊 Em ${d.periodo}: consumo total de ${d.consumoTotal} kg, média de ${d.mediaDiaria} kg/dia em ${d.diasComDados} dias com registro.`;
     }
@@ -564,16 +585,10 @@ app.post('/api/chat/mensagem', autenticarToken, async (req, res) => {
             db.get("SELECT nome, raca_animal, nome_racao FROM usuarios WHERE id = ?", [uid], (e, row) => r(row || {}))
         );
 
-        // 1. Detectar intenção da pergunta
         const intencao = detectarIntencao(mensagem);
-
-        // 2. Buscar dados precisos do banco conforme a intenção
         const dadosBuscados = await buscarDadosPrecisosParaChat(uid, intencao);
-
-        // 3. Montar contexto com os dados reais
         const contextoDados = montarContextoPreciso(dadosBuscados, intencao);
 
-        // 4. System prompt com contexto preciso
         const systemPrompt = `Você é o PetFlow AI, assistente veterinário especializado em monitoramento de alimentação de pets.
 
 TUTOR E PET:
@@ -587,17 +602,16 @@ ${contextoDados}
 REGRAS ABSOLUTAS:
 - Responda SEMPRE em português brasileiro
 - Use SOMENTE os números fornecidos acima — nunca estime, arredonde diferente ou calcule por conta própria
-- Se os dados disserem "consumo total: 2.450 kg", diga exatamente 2.450 kg
+- Se os dados disserem "peso atual do pote: 0.113 kg", você deve responder exatamente "O peso atual do pote é de 0.113 kg"
+- NUNCA diga "0 kg" se o dado fornecido for diferente
 - Seja amigável, use o nome do tutor quando fizer sentido
 - Máximo 4 frases por resposta
 - Sugira veterinário quando pertinente à saúde do animal
 - Emojis com moderação
 - Para perguntas não relacionadas a dados (ex: "o que é SRD?"), responda normalmente com seu conhecimento veterinário`;
 
-        // 5. Buscar histórico recente do chat
         const hist = await new Promise(r =>
-            db.all(`SELECT role, conteudo FROM chat_mensagens WHERE usuario_id = ? ORDER BY id DESC LIMIT 16`,
-                [uid], (e, rows) => r(rows ? rows.reverse() : []))
+            db.all(`SELECT role, conteudo FROM chat_mensagens WHERE usuario_id = ? ORDER BY id DESC LIMIT 16`, [uid], (e, rows) => r(rows ? rows.reverse() : []))
         );
 
         const messages = [
@@ -606,14 +620,11 @@ REGRAS ABSOLUTAS:
             { role: "user", content: mensagem.trim() }
         ];
 
-        // 6. Salvar mensagem do usuário
         const agora = formatarDataHoraSQL(getDataHoraBrasil());
         await new Promise((res, rej) =>
-            db.run(`INSERT INTO chat_mensagens (usuario_id, role, conteudo, data) VALUES (?, 'user', ?, ?)`,
-                [uid, mensagem.trim(), agora], e => { if (e) rej(e); else res(); })
+            db.run(`INSERT INTO chat_mensagens (usuario_id, role, conteudo, data) VALUES (?, 'user', ?, ?)`, [uid, mensagem.trim(), agora], e => { if (e) rej(e); else res(); })
         );
 
-        // 7. Chamar Groq ou fallback
         let resp;
         if (GROQ_API_KEY) {
             try {
@@ -626,11 +637,9 @@ REGRAS ABSOLUTAS:
             resp = gerarFallbackChat(mensagem, dadosBuscados, info);
         }
 
-        // 8. Salvar resposta da IA
         const agoraResp = formatarDataHoraSQL(getDataHoraBrasil());
         await new Promise((res, rej) =>
-            db.run(`INSERT INTO chat_mensagens (usuario_id, role, conteudo, data) VALUES (?, 'assistant', ?, ?)`,
-                [uid, resp, agoraResp], e => { if (e) rej(e); else res(); })
+            db.run(`INSERT INTO chat_mensagens (usuario_id, role, conteudo, data) VALUES (?, 'assistant', ?, ?)`, [uid, resp, agoraResp], e => { if (e) rej(e); else res(); })
         );
 
         res.json({ resposta: resp, fonte: GROQ_API_KEY ? 'groq' : 'local', timestamp: agoraResp });
